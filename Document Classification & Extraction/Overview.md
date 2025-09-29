@@ -10,7 +10,7 @@ An intelligent, automated document processing pipeline that transforms unstructu
 ## Key Highlights
 
 - **Real-time & Event-driven Processing**: Using Auto-Refresh of Snowflake Directory Tables and Streams/Triggered Tasks, Documents are auto-processed in Snowflake within seconds of S3 upload
-- **Scalable: Serverless Tasks allows Snowflake to predict, assign, and scale compute resources as necessary based on Document demands 
+- **Scalable**: Serverless Tasks allows Snowflake to predict, assign, and scale compute resources as necessary based on Document demands 
 - **Cortex AI-Powered**: Leverages Snowflake Cortex AI functions for parsing (AI_PARSE_DOCUMENT), classification (AI_CLASSIFY), and extraction (AI_EXTRACT)
 - **Interactive Dashboard**: Streamlit app for visualization, monitoring, and document chat
 - **Semantic Search**: RAG-enabled document chatbot with Cortex Search
