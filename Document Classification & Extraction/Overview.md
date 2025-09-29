@@ -14,7 +14,7 @@ An intelligent, automated document processing pipeline that transforms unstructu
 - **Interactive Dashboard**: Streamlit app for visualization and document chat
 - **Semantic Search**: RAG-enabled document chatbot with Cortex Search
 - **Stream-Based**: Event-driven architecture using Snowflake Streams and Tasks
-- **Multi-Format Support**: Handles PDFs, PNGs, JPEGs, and JPGs
+- **Multi-Format Support**: Handles PDF, DOCX, PPTX, JPEG, JPG, PNG, TIFF, TIF, HTML, and TXT files
 
 ## Architecture
 
@@ -36,7 +36,23 @@ graph TD
     N --> O[Streamlit Dashboard & Chat]
 ```
 
-## Supported Document Types
+## Supported File Formats
+
+The pipeline supports all file formats compatible with Snowflake's AI_PARSE_DOCUMENT function:
+
+| Format Category | File Extensions | Processing Notes |
+|-----------------|-----------------|------------------|
+| **Documents** | PDF, DOCX, PPTX | Full layout preservation with LAYOUT mode |
+| **Images** | JPEG, JPG, PNG, TIFF, TIF | OCR and layout analysis |
+| **Web/Text** | HTML, TXT | Automatic chunking for large files |
+
+**Processing Details:**
+- **PDF/DOCX/PPTX**: Each page billed as 970 tokens
+- **Images**: Each file billed as 1 page (970 tokens)  
+- **HTML/TXT**: Each 3,000 characters billed as 1 page (970 tokens)
+- **Maximum**: 500 pages per document, 100 MB file size limit
+
+## Document Classification Types
 
 | Document Type | Extracted Fields | Use Cases |
 |---------------|------------------|-----------|
@@ -134,7 +150,7 @@ graph TD
 
 **Classification errors:**
 - Test AI functions manually with sample documents
-- Verify document formats are supported (PDF, PNG, JPG, JPEG)
+- Verify document formats are supported (PDF, DOCX, PPTX, JPEG, JPG, PNG, TIFF, TIF, HTML, TXT)
 
 **No extracted attributes:**
 - Check extraction prompts exist for document classes

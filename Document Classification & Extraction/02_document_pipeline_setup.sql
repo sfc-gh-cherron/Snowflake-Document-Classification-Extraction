@@ -117,9 +117,15 @@ DECLARE
     WHERE METADATA$ACTION = 'INSERT'
       AND (
         UPPER(relative_path) LIKE '%.PDF' 
-        OR UPPER(relative_path) LIKE '%.PNG' 
-        OR UPPER(relative_path) LIKE '%.JPG' 
+        OR UPPER(relative_path) LIKE '%.DOCX'
+        OR UPPER(relative_path) LIKE '%.PPTX'
         OR UPPER(relative_path) LIKE '%.JPEG'
+        OR UPPER(relative_path) LIKE '%.JPG' 
+        OR UPPER(relative_path) LIKE '%.PNG'
+        OR UPPER(relative_path) LIKE '%.TIFF'
+        OR UPPER(relative_path) LIKE '%.TIF'
+        OR UPPER(relative_path) LIKE '%.HTML'
+        OR UPPER(relative_path) LIKE '%.TXT'
       );
   
   -- Variables for processing each document
@@ -149,8 +155,13 @@ BEGIN
       file_extension := UPPER(REGEXP_SUBSTR(file_name, '\.[^.]+$'));
       document_type := CASE 
         WHEN file_extension = '.PDF' THEN 'pdf'
-        WHEN file_extension = '.PNG' THEN 'png'
+        WHEN file_extension = '.DOCX' THEN 'docx'
+        WHEN file_extension = '.PPTX' THEN 'pptx'
         WHEN file_extension IN ('.JPG', '.JPEG') THEN 'jpeg'
+        WHEN file_extension = '.PNG' THEN 'png'
+        WHEN file_extension IN ('.TIFF', '.TIF') THEN 'tiff'
+        WHEN file_extension = '.HTML' THEN 'html'
+        WHEN file_extension = '.TXT' THEN 'txt'
         ELSE 'unknown'
       END;
       

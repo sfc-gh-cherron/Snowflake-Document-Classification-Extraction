@@ -424,7 +424,7 @@ def render_document_preview(file_path, document_type):
         else:
             relative_path = file_path
         
-        if document_type.lower() in ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff']:
+        if document_type.lower() in ['png', 'jpg', 'jpeg', 'tiff', 'tif']:
             # Generate a presigned URL for image preview
             try:
                 presigned_url_result = session.sql(f"""
@@ -459,6 +459,52 @@ def render_document_preview(file_path, document_type):
                     st.info("📄 PDF preview not available - unable to generate access URL")
             except Exception as e:
                 st.warning(f"📄 PDF preview not available: {str(e)}")
+                
+        elif document_type.lower() in ['docx', 'pptx']:
+            # For Office documents, show download option
+            try:
+                presigned_url_result = session.sql(f"""
+                    SELECT GET_PRESIGNED_URL('@document_db.s3_documents.document_stage', '{relative_path}', 3600) as presigned_url
+                """).collect()
+                
+                if presigned_url_result and presigned_url_result[0]['PRESIGNED_URL']:
+                    presigned_url = presigned_url_result[0]['PRESIGNED_URL']
+                    doc_icon = "📊" if document_type.lower() == 'pptx' else "📝"
+                    doc_name = "PowerPoint Presentation" if document_type.lower() == 'pptx' else "Word Document"
+                    st.markdown(f"""
+                    {doc_icon} **{doc_name}**
+                    
+                    [📥 Download {document_type.upper()}]({presigned_url})
+                    
+                    *Click the link above to download and view the {doc_name.lower()}*
+                    """)
+                else:
+                    st.info(f"📄 {document_type.upper()} preview not available - unable to generate access URL")
+            except Exception as e:
+                st.warning(f"📄 {document_type.upper()} preview not available: {str(e)}")
+                
+        elif document_type.lower() in ['html', 'txt']:
+            # For text-based files, show download option and potentially preview content
+            try:
+                presigned_url_result = session.sql(f"""
+                    SELECT GET_PRESIGNED_URL('@document_db.s3_documents.document_stage', '{relative_path}', 3600) as presigned_url
+                """).collect()
+                
+                if presigned_url_result and presigned_url_result[0]['PRESIGNED_URL']:
+                    presigned_url = presigned_url_result[0]['PRESIGNED_URL']
+                    doc_icon = "🌐" if document_type.lower() == 'html' else "📄"
+                    doc_name = "HTML Document" if document_type.lower() == 'html' else "Text File"
+                    st.markdown(f"""
+                    {doc_icon} **{doc_name}**
+                    
+                    [📥 Download {document_type.upper()}]({presigned_url})
+                    
+                    *Click the link above to download and view the {doc_name.lower()}*
+                    """)
+                else:
+                    st.info(f"📄 {document_type.upper()} preview not available - unable to generate access URL")
+            except Exception as e:
+                st.warning(f"📄 {document_type.upper()} preview not available: {str(e)}")
                 
         else:
             # For other file types, show file info and download option if possible
