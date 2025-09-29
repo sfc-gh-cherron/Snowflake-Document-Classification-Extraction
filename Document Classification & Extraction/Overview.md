@@ -18,23 +18,7 @@ An intelligent, automated document processing pipeline that transforms unstructu
 
 ## Architecture
 
-```mermaid
-graph TD
-    A[Document Upload to S3] --> B[S3 Event → SQS → Snowflake]
-    B --> C[Directory Table Auto-Refresh]
-    C --> D[Stream Captures New Document]
-    D --> E[Parse Task Triggered]
-    E --> F[AI_PARSE_DOCUMENT]
-    F --> G[AI_CLASSIFY Document Type]
-    G --> H[Store Classification]
-    H --> I[Extract Task Triggered]
-    I --> J[Lookup Extraction Prompts]
-    J --> K[AI_EXTRACT Structured Data]
-    K --> L[Store Final Extractions]
-    L --> M[Chunk for Search]
-    M --> N[Cortex Search Service]
-    N --> O[Streamlit Dashboard & Chat]
-```
+![Architecture Diagram](architecture_diagram.png)
 
 ## Supported File Formats
 
