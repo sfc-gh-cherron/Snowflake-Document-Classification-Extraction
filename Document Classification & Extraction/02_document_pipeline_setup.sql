@@ -55,44 +55,128 @@ CREATE OR REPLACE TABLE document_db.s3_documents.extraction_prompts (
   PRIMARY KEY (document_class, attribute_name)
 );
 
--- Seed all extraction prompts (32 total attributes across 4 document classes)
+-- Seed all extraction prompts (79 total attributes across 9 document classes)
+-- Updated to match demo_docs folder structure with comprehensive business-relevant attributes
 INSERT INTO document_db.s3_documents.extraction_prompts
--- W2 prompts (8 attributes)
-SELECT 'w2' AS document_class, 'employee_name' AS attribute_name, 'What is the employee''s full name as shown on the W-2?' AS question_text UNION ALL
+
+-- ======================
+-- W2 TAX FORM (10 attributes)
+-- ======================
+SELECT 'w2' AS document_class, 'employee_name' AS attribute_name, 'What is the employee''s full legal name as shown on the W-2?' AS question_text UNION ALL
 SELECT 'w2', 'employer_name', 'What is the employer company name on the W-2?' UNION ALL
+SELECT 'w2', 'employer_ein', 'What is the Employer Identification Number (EIN)?' UNION ALL
 SELECT 'w2', 'tax_year', 'What tax year is this W-2 for?' UNION ALL
 SELECT 'w2', 'wages_tips_compensation', 'What is the amount in Box 1 - Wages, tips, other compensation?' UNION ALL
 SELECT 'w2', 'federal_income_tax_withheld', 'What is the amount in Box 2 - Federal income tax withheld?' UNION ALL
 SELECT 'w2', 'social_security_wages', 'What is the amount in Box 3 - Social security wages?' UNION ALL
 SELECT 'w2', 'social_security_tax_withheld', 'What is the amount in Box 4 - Social security tax withheld?' UNION ALL
+SELECT 'w2', 'medicare_wages', 'What is the amount in Box 5 - Medicare wages and tips?' UNION ALL
 SELECT 'w2', 'state', 'What state is listed for state income tax on the W-2?' UNION ALL
--- Snowflake infographic prompts (8 attributes)
-SELECT 'snowflake_infographic', 'quarter', 'Which fiscal quarter is reported (e.g., Q1 FY2025)?' UNION ALL
-SELECT 'snowflake_infographic', 'fiscal_year', 'Which fiscal year is reported?' UNION ALL
-SELECT 'snowflake_infographic', 'revenue', 'What is total revenue for the period? Include currency and units if present.' UNION ALL
-SELECT 'snowflake_infographic', 'revenue_growth_percent', 'What is the year-over-year revenue growth percentage?' UNION ALL
-SELECT 'snowflake_infographic', 'customers_count', 'How many total customers are reported?' UNION ALL
-SELECT 'snowflake_infographic', 'customers_over_1m_count', 'How many customers have trailing 12-month product revenue over $1M?' UNION ALL
-SELECT 'snowflake_infographic', 'net_revenue_retention_rate', 'What is the net revenue retention rate (NRR)?' UNION ALL
-SELECT 'snowflake_infographic', 'operating_margin', 'What is the operating margin or non-GAAP operating margin?' UNION ALL
--- Sustainability report prompts (8 attributes)
-SELECT 'sustainability_report', 'reporting_period', 'What reporting period does this sustainability report cover?' UNION ALL
-SELECT 'sustainability_report', 'ghg_scope1_emissions', 'What are the Scope 1 greenhouse gas emissions? Include units.' UNION ALL
-SELECT 'sustainability_report', 'ghg_scope2_emissions', 'What are the Scope 2 greenhouse gas emissions? Include units.' UNION ALL
-SELECT 'sustainability_report', 'renewable_energy_usage', 'What percentage of energy consumption is from renewable sources?' UNION ALL
-SELECT 'sustainability_report', 'water_withdrawal', 'What is total water withdrawal? Include units.' UNION ALL
-SELECT 'sustainability_report', 'waste_recycled', 'What amount or percentage of waste recycled is reported?' UNION ALL
-SELECT 'sustainability_report', 'esg_rating_or_certification', 'What ESG ratings or certifications are reported?' UNION ALL
-SELECT 'sustainability_report', 'net_zero_target', 'What is the net-zero or decarbonization target and target year?' UNION ALL
--- Other/generic prompts (8 attributes)
+
+-- ======================
+-- VENDOR/SERVICE CONTRACT (10 attributes)
+-- ======================
+SELECT 'vendor_contract', 'vendor_name', 'What is the name of the vendor or service provider?' UNION ALL
+SELECT 'vendor_contract', 'client_name', 'What is the name of the client or customer company?' UNION ALL
+SELECT 'vendor_contract', 'contract_effective_date', 'When does the contract become effective?' UNION ALL
+SELECT 'vendor_contract', 'contract_expiration_date', 'When does the contract expire or end?' UNION ALL
+SELECT 'vendor_contract', 'contract_term_months', 'What is the length of the contract in months or years?' UNION ALL
+SELECT 'vendor_contract', 'total_contract_value', 'What is the total value of the contract? Include currency.' UNION ALL
+SELECT 'vendor_contract', 'payment_terms', 'What are the payment terms or payment schedule (e.g., Net 30, monthly, quarterly)?' UNION ALL
+SELECT 'vendor_contract', 'services_description', 'What services or products are being provided? Provide a brief description.' UNION ALL
+SELECT 'vendor_contract', 'auto_renewal_clause', 'Does the contract have an automatic renewal clause? (Yes/No)' UNION ALL
+SELECT 'vendor_contract', 'termination_notice_period', 'How many days or months notice is required for termination?' UNION ALL
+
+-- ======================
+-- SALES REPORT/PERFORMANCE (8 attributes)
+-- ======================
+SELECT 'sales_report', 'reporting_period', 'What reporting period does this cover (e.g., Q4 2024, FY2025, December 2024)?' UNION ALL
+SELECT 'sales_report', 'total_revenue', 'What is the total revenue for the reporting period? Include currency.' UNION ALL
+SELECT 'sales_report', 'revenue_growth_percent', 'What is the revenue growth percentage (year-over-year or period-over-period)?' UNION ALL
+SELECT 'sales_report', 'top_performing_region', 'What is the top performing sales region or territory?' UNION ALL
+SELECT 'sales_report', 'new_customers_count', 'How many new customers were acquired during this period?' UNION ALL
+SELECT 'sales_report', 'average_deal_size', 'What is the average deal size or average contract value?' UNION ALL
+SELECT 'sales_report', 'sales_pipeline_value', 'What is the total value of the sales pipeline?' UNION ALL
+SELECT 'sales_report', 'quota_attainment_percent', 'What percentage of sales quota was achieved?' UNION ALL
+
+-- ======================
+-- MARKETING CAMPAIGN REPORT (9 attributes)
+-- ======================
+SELECT 'marketing_report', 'campaign_name', 'What is the name of the marketing campaign?' UNION ALL
+SELECT 'marketing_report', 'reporting_period', 'What time period does this campaign report cover?' UNION ALL
+SELECT 'marketing_report', 'campaign_budget', 'What was the total budget allocated for this campaign? Include currency.' UNION ALL
+SELECT 'marketing_report', 'total_impressions', 'How many total impressions or views were generated?' UNION ALL
+SELECT 'marketing_report', 'total_clicks', 'How many total clicks were received?' UNION ALL
+SELECT 'marketing_report', 'click_through_rate', 'What is the click-through rate (CTR) as a percentage?' UNION ALL
+SELECT 'marketing_report', 'conversion_rate', 'What is the conversion rate as a percentage?' UNION ALL
+SELECT 'marketing_report', 'cost_per_acquisition', 'What is the cost per acquisition (CPA) or cost per lead?' UNION ALL
+SELECT 'marketing_report', 'roi_percent', 'What is the return on investment (ROI) as a percentage?' UNION ALL
+
+-- ======================
+-- HR POLICY/HANDBOOK (7 attributes)
+-- ======================
+SELECT 'hr_policy', 'document_title', 'What is the official title of this HR policy or handbook?' UNION ALL
+SELECT 'hr_policy', 'effective_date', 'When does this policy become effective or was it last updated?' UNION ALL
+SELECT 'hr_policy', 'version_number', 'What is the version number or revision number of this document?' UNION ALL
+SELECT 'hr_policy', 'department', 'Which department is responsible for this policy (e.g., HR, Legal, Compliance)?' UNION ALL
+SELECT 'hr_policy', 'policy_type', 'What type of policy is this (e.g., Employee Handbook, Performance Review Guidelines, Code of Conduct)?' UNION ALL
+SELECT 'hr_policy', 'approval_authority', 'Who approved this policy (e.g., CEO, Board, HR Director)?' UNION ALL
+SELECT 'hr_policy', 'last_review_date', 'When was this policy last reviewed?' UNION ALL
+
+-- ======================
+-- CORPORATE POLICY (8 attributes)
+-- ======================
+SELECT 'corporate_policy', 'policy_name', 'What is the name of this corporate policy?' UNION ALL
+SELECT 'corporate_policy', 'policy_category', 'What category does this policy fall under (e.g., Expense Policy, Travel Policy, Vendor Management)?' UNION ALL
+SELECT 'corporate_policy', 'effective_date', 'When does this policy take effect?' UNION ALL
+SELECT 'corporate_policy', 'approval_date', 'When was this policy approved?' UNION ALL
+SELECT 'corporate_policy', 'policy_owner', 'Which department or role owns this policy?' UNION ALL
+SELECT 'corporate_policy', 'approval_levels_required', 'What approval levels or authorities are required under this policy?' UNION ALL
+SELECT 'corporate_policy', 'spending_limits', 'What are the key spending limits or monetary thresholds mentioned?' UNION ALL
+SELECT 'corporate_policy', 'review_frequency', 'How often is this policy reviewed (e.g., annually, quarterly)?' UNION ALL
+
+-- ======================
+-- FINANCIAL INFOGRAPHIC/EARNINGS REPORT (10 attributes)
+-- ======================
+SELECT 'financial_infographic', 'quarter', 'Which fiscal quarter is reported (e.g., Q1, Q2, Q3, Q4)?' UNION ALL
+SELECT 'financial_infographic', 'fiscal_year', 'Which fiscal year is reported?' UNION ALL
+SELECT 'financial_infographic', 'revenue', 'What is the total revenue for the period? Include currency and units.' UNION ALL
+SELECT 'financial_infographic', 'revenue_growth_percent', 'What is the year-over-year revenue growth percentage?' UNION ALL
+SELECT 'financial_infographic', 'operating_margin', 'What is the operating margin as a percentage?' UNION ALL
+SELECT 'financial_infographic', 'net_income', 'What is the net income or profit for the period?' UNION ALL
+SELECT 'financial_infographic', 'customers_count', 'How many total customers are reported?' UNION ALL
+SELECT 'financial_infographic', 'customers_over_1m_count', 'How many customers have trailing 12-month revenue over $1M (enterprise customers)?' UNION ALL
+SELECT 'financial_infographic', 'net_revenue_retention_rate', 'What is the net revenue retention rate (NRR) as a percentage?' UNION ALL
+SELECT 'financial_infographic', 'gross_margin', 'What is the gross margin as a percentage?' UNION ALL
+
+-- ======================
+-- CASE STUDY/CUSTOMER SUCCESS STORY (7 attributes)
+-- ======================
+SELECT 'case_study', 'customer_name', 'What is the name of the featured customer or company?' UNION ALL
+SELECT 'case_study', 'industry', 'What industry does the customer operate in?' UNION ALL
+SELECT 'case_study', 'use_case', 'What was the primary use case or business problem being solved?' UNION ALL
+SELECT 'case_study', 'business_impact', 'What was the key business impact or result achieved?' UNION ALL
+SELECT 'case_study', 'metrics_improved', 'What specific metrics improved (e.g., 50% cost reduction, 2x faster processing)?' UNION ALL
+SELECT 'case_study', 'implementation_duration', 'How long did the implementation take?' UNION ALL
+SELECT 'case_study', 'testimonial_quote', 'What is the key testimonial or quote from the customer?' UNION ALL
+
+-- ======================
+-- STRATEGY DOCUMENT (8 attributes)
+-- ======================
+SELECT 'strategy_document', 'document_title', 'What is the title of this strategy document?' UNION ALL
+SELECT 'strategy_document', 'planning_period', 'What time period does this strategy cover (e.g., 2025, FY2025, Q1-Q4 2025)?' UNION ALL
+SELECT 'strategy_document', 'department', 'Which department or business unit does this strategy belong to (e.g., Marketing, Sales, Corporate)?' UNION ALL
+SELECT 'strategy_document', 'strategic_goals', 'What are the main strategic goals or objectives?' UNION ALL
+SELECT 'strategy_document', 'key_initiatives', 'What are the major initiatives or programs planned?' UNION ALL
+SELECT 'strategy_document', 'budget_allocation', 'What is the total budget or key budget allocations mentioned?' UNION ALL
+SELECT 'strategy_document', 'success_metrics', 'What are the key performance indicators (KPIs) or success metrics?' UNION ALL
+SELECT 'strategy_document', 'document_date', 'When was this strategy document created or published?' UNION ALL
+
+-- ======================
+-- OTHER/FALLBACK (2 attributes - minimal extraction for unclassified docs)
+-- ======================
 SELECT 'other', 'document_title', 'What is the title of this document?' UNION ALL
-SELECT 'other', 'document_date', 'What is the document''s date or most relevant date?' UNION ALL
-SELECT 'other', 'author_or_source', 'Who is the author or source organization?' UNION ALL
-SELECT 'other', 'summary', 'Provide a one-sentence summary of the document.' UNION ALL
-SELECT 'other', 'primary_topic', 'What is the primary topic of the document?' UNION ALL
-SELECT 'other', 'key_entities', 'List key entities (people, companies) mentioned.' UNION ALL
-SELECT 'other', 'location', 'What locations are most relevant to this document?' UNION ALL
-SELECT 'other', 'action_items', 'List any clear action items, decisions, or outcomes.';
+SELECT 'other', 'document_date', 'What is the document''s date or most relevant date?';
 
 
 -- =============================
@@ -240,7 +324,8 @@ END;
 $$;
 
 -- Step 2: Classify parsed documents using AI_CLASSIFY
--- Categorizes documents into w2, snowflake_infographic, sustainability_report, or other
+-- Categorizes documents into 9 business document types: w2, vendor_contract, sales_report, 
+-- marketing_report, hr_policy, corporate_policy, financial_infographic, case_study, strategy_document, or other
 CREATE OR REPLACE PROCEDURE document_db.s3_documents.classify_parsed_documents()
 RETURNS STRING
 LANGUAGE SQL
@@ -293,10 +378,12 @@ BEGIN
       v_content_text := doc_record.content_text;
       v_last_modified := doc_record.last_modified;
 
-      -- Classify document into one of 4 categories using AI
+      -- Classify document into one of 9 business categories using AI
+      -- Categories aligned with demo_docs folder structure
       doc_class := AI_CLASSIFY(
         :v_content_text,
-        ['w2', 'snowflake_infographic', 'sustainability_report', 'other']
+        ['w2', 'vendor_contract', 'sales_report', 'marketing_report', 'hr_policy', 
+         'corporate_policy', 'financial_infographic', 'case_study', 'strategy_document', 'other']
       );
       
       -- Store classification result
