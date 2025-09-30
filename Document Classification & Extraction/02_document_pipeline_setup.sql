@@ -343,8 +343,7 @@ DECLARE
       file_url,
       document_type,
       parsed_content,
-      content_text,
-      /* removed unused cols */ NULL::TIMESTAMP AS last_modified
+      content_text
     FROM document_db.s3_documents.parsed_documents
     WHERE status = 'parsed'
       AND content_text IS NOT NULL
@@ -359,7 +358,6 @@ DECLARE
   v_document_type STRING;
   v_parsed_content VARIANT;
   v_content_text STRING;
-  v_last_modified TIMESTAMP;
   doc_class STRING;
   processed_count INTEGER := 0;
   error_count INTEGER := 0;
@@ -376,7 +374,6 @@ BEGIN
       v_document_type := doc_record.document_type;
       v_parsed_content := doc_record.parsed_content;
       v_content_text := doc_record.content_text;
-      v_last_modified := doc_record.last_modified;
 
       -- Classify document into one of 9 business categories using AI
       -- Categories aligned with demo_docs folder structure
@@ -389,9 +386,9 @@ BEGIN
       -- Store classification result
       INSERT INTO document_db.s3_documents.document_classifications 
       (document_id, file_name, file_path, file_size, file_url, document_type, 
-       parsed_content, document_class, last_modified)
+       parsed_content, document_class)
       SELECT :v_document_id, :v_file_name, :v_file_path, :v_file_size, :v_file_url, :v_document_type,
-             :v_parsed_content, :doc_class, :v_last_modified;
+             :v_parsed_content, :doc_class;
       
       -- Mark document as classified to prevent reprocessing
       UPDATE document_db.s3_documents.parsed_documents 
@@ -406,7 +403,7 @@ BEGIN
         error_count := error_count + 1;
         INSERT INTO document_db.s3_documents.document_classifications 
         (document_id, file_name, file_path, file_size, file_url, document_type, 
-         parsed_content, document_class, last_modified)
+         parsed_content, document_class)
         SELECT CONCAT('ERR_CLASS_', REPLACE(REPLACE(CURRENT_TIMESTAMP()::STRING,' ', '_'), ':',''), '_', ABS(HASH(COALESCE(:v_file_path,'UNKNOWN')))),
                COALESCE(:v_file_name, 'classification_error'),
                COALESCE(:v_file_path, 'error_during_classification'),
@@ -414,7 +411,7 @@ BEGIN
                COALESCE(:v_file_url, ''),
                COALESCE(:v_document_type, 'error'),
                PARSE_JSON('{"error": "Document classification failed", "timestamp": "' || CURRENT_TIMESTAMP()::STRING || '"}'),
-               'classification_error', CURRENT_TIMESTAMP();
+               'classification_error';
         
         UPDATE document_db.s3_documents.parsed_documents 
         SET status = 'classification_error' 
