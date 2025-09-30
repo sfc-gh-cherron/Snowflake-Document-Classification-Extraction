@@ -437,7 +437,6 @@ BEGIN
 END;
 $$;
 
-
 -- =============================
 -- DOCUMENT CHUNKING AND CORTEX SEARCH
 -- =============================
@@ -645,6 +644,62 @@ CREATE OR REPLACE TASK document_db.s3_documents.chunk_documents_task
 AS
   CALL document_db.s3_documents.chunk_classified_documents();
 
+-- =============================
+-- FLATTENED DOCUMENT PROCESSING VIEW
+-- =============================
+-- Create a comprehensive flattened view that combines all document processing results
+-- This view shows document_id, file_name, document_class, attribute_name, and attribute_value
+-- Each row represents one document-attribute pair (e.g., customer_count: 12,062)
+
+CREATE OR REPLACE VIEW document_db.s3_documents.document_processing_summary AS
+WITH flattened_extractions AS (
+    -- Handle regular attributes (non-JSON)
+    SELECT 
+        document_id,
+        file_name,
+        file_path,
+        document_class,
+        attribute_name,
+        attribute_value,
+        extraction_timestamp
+    FROM document_db.s3_documents.document_extractions
+    WHERE TRY_PARSE_JSON(attribute_value) IS NULL
+    
+    UNION ALL
+    
+    -- Handle JSON attributes - flatten them
+    SELECT 
+        de.document_id,
+        de.file_name,
+        de.file_path,
+        de.document_class,
+        f.key::STRING AS attribute_name,
+        f.value::STRING AS attribute_value,
+        de.extraction_timestamp
+    FROM document_db.s3_documents.document_extractions de,
+         LATERAL FLATTEN(INPUT => TRY_PARSE_JSON(de.attribute_value)) f
+    WHERE TRY_PARSE_JSON(de.attribute_value) IS NOT NULL
+)
+SELECT 
+    dc.document_id,
+    dc.file_name,
+    dc.file_path,
+    dc.document_type,
+    -- Clean document classification (remove JSON formatting if present)
+    CASE 
+        WHEN TRY_PARSE_JSON(dc.document_class) IS NOT NULL THEN 
+            TRY_PARSE_JSON(dc.document_class):labels[0]::STRING
+        ELSE dc.document_class
+    END as document_classification,
+    fe.attribute_name,
+    fe.attribute_value,
+    dc.classification_timestamp,
+    fe.extraction_timestamp
+FROM document_db.s3_documents.document_classifications dc
+LEFT JOIN flattened_extractions fe 
+    ON dc.document_id = fe.document_id
+ORDER BY dc.document_id, fe.attribute_name;
+
 
 -- =============================
 -- START TASKS AND VALIDATION QUERIES
@@ -658,6 +713,190 @@ SELECT * FROM document_db.s3_documents.parsed_documents;
 SELECT * FROM document_db.s3_documents.document_classifications;
 SELECT * FROM document_db.s3_documents.document_extractions;
 SELECT * FROM document_db.s3_documents.document_chunks;
+
+-- Validation query for flattened document processing results
+-- This shows each document with individual attribute-value pairs (one row per attribute)
+SELECT * FROM document_db.s3_documents.document_processing_summary LIMIT 20;
+
+-- Debug: Test the main view with w2_3 specifically
+SELECT * FROM document_db.s3_documents.document_processing_summary 
+WHERE file_name LIKE '%w2_3%' 
+ORDER BY document_id, attribute_name;
+
+-- Summary statistics for the flattened view
+SELECT 
+    COUNT(DISTINCT document_id) as total_documents,
+    COUNT(DISTINCT document_classification) as unique_classifications,
+    COUNT(DISTINCT attribute_name) as unique_attributes,
+    COUNT(*) as total_rows_including_nulls
+FROM document_db.s3_documents.document_processing_summary;
+
+-- Debug: Check what's in the extractions table
+SELECT 
+    document_id, 
+    file_name, 
+    document_class, 
+    attribute_name, 
+    attribute_value,
+    LENGTH(attribute_value) as value_length
+FROM document_db.s3_documents.document_extractions 
+ORDER BY document_id, attribute_name 
+LIMIT 10;
+
+-- Debug: Check if extractions exist at all
+SELECT COUNT(*) as total_extractions FROM document_db.s3_documents.document_extractions;
+
+-- Debug: Check extraction JSON structure
+SELECT 
+    document_id,
+    file_name,
+    attribute_name,
+    attribute_value,
+    extraction_json,
+    TRY_PARSE_JSON(extraction_json) as parsed_json
+FROM document_db.s3_documents.document_extractions 
+WHERE extraction_json IS NOT NULL
+LIMIT 5;
+
+-- Debug: Check if attribute_value contains JSON that should be flattened
+SELECT 
+    document_id,
+    file_name,
+    attribute_name,
+    attribute_value,
+    TRY_PARSE_JSON(attribute_value) as parsed_attribute_value,
+    CASE 
+        WHEN TRY_PARSE_JSON(attribute_value) IS NOT NULL THEN 'JSON_IN_ATTRIBUTE_VALUE'
+        ELSE 'PLAIN_TEXT'
+    END as value_type
+FROM document_db.s3_documents.document_extractions 
+WHERE attribute_value IS NOT NULL
+ORDER BY document_id, attribute_name;
+
+-- Example: Show all attributes for a specific document (like infographic_1)
+-- SELECT * FROM document_db.s3_documents.document_processing_summary 
+-- WHERE file_name LIKE '%infographic%' 
+-- ORDER BY document_id, attribute_name;
+
+-- Debug: Test the main view with JSON flattening
+SELECT * FROM document_db.s3_documents.document_processing_summary 
+ORDER BY document_id, attribute_name 
+LIMIT 20;
+
+-- Debug: Test with w2_3 specifically
+SELECT * FROM document_db.s3_documents.document_processing_summary 
+WHERE file_name LIKE '%w2_3%' 
+ORDER BY attribute_name;
+
+-- Debug: Check if attribute names match between prompts and extractions
+SELECT 
+    'PROMPTS' as source,
+    document_class,
+    attribute_name
+FROM document_db.s3_documents.extraction_prompts
+WHERE document_class = 'w2'
+UNION ALL
+SELECT 
+    'EXTRACTIONS' as source,
+    document_class,
+    attribute_name
+FROM document_db.s3_documents.document_extractions
+WHERE document_class = 'w2'
+ORDER BY attribute_name, source;
+
+-- Debug: Check specific w2_3 document extractions
+SELECT 
+    document_id,
+    file_name,
+    document_class,
+    attribute_name,
+    attribute_value
+FROM document_db.s3_documents.document_extractions
+WHERE file_name LIKE '%w2_3%'
+ORDER BY attribute_name;
+
+-- Debug: Check document classification for w2_3
+SELECT 
+    document_id,
+    file_name,
+    document_class,
+    CASE 
+        WHEN TRY_PARSE_JSON(document_class) IS NOT NULL THEN 
+            TRY_PARSE_JSON(document_class):labels[0]::STRING
+        ELSE document_class
+    END as clean_document_class
+FROM document_db.s3_documents.document_classifications
+WHERE file_name LIKE '%w2_3%';
+
+-- Debug: Test direct JOIN between classifications and extractions for w2_3
+SELECT 
+    dc.document_id,
+    dc.file_name,
+    CASE 
+        WHEN TRY_PARSE_JSON(dc.document_class) IS NOT NULL THEN 
+            TRY_PARSE_JSON(dc.document_class):labels[0]::STRING
+        ELSE dc.document_class
+    END as clean_document_class,
+    de.attribute_name,
+    de.attribute_value,
+    de.document_class as extraction_document_class
+FROM document_db.s3_documents.document_classifications dc
+LEFT JOIN document_db.s3_documents.document_extractions de 
+    ON dc.document_id = de.document_id
+WHERE dc.file_name LIKE '%w2_3%'
+ORDER BY de.attribute_name;
+
+-- Debug: Compare expected vs actual attribute names for w2_3
+WITH w2_doc AS (
+    SELECT document_id, file_name,
+           CASE 
+               WHEN TRY_PARSE_JSON(document_class) IS NOT NULL THEN 
+                   TRY_PARSE_JSON(document_class):labels[0]::STRING
+               ELSE document_class
+           END as clean_document_class
+    FROM document_db.s3_documents.document_classifications
+    WHERE file_name LIKE '%w2_3%'
+),
+expected_attrs AS (
+    SELECT wd.document_id, wd.file_name, wd.clean_document_class, 
+           ep.attribute_name as expected_attribute
+    FROM w2_doc wd
+    LEFT JOIN document_db.s3_documents.extraction_prompts ep 
+        ON ep.document_class = wd.clean_document_class
+),
+actual_attrs AS (
+    SELECT document_id, attribute_name as actual_attribute, attribute_value
+    FROM document_db.s3_documents.document_extractions
+    WHERE document_id IN (SELECT document_id FROM w2_doc)
+)
+SELECT 
+    ea.document_id,
+    ea.file_name,
+    ea.clean_document_class,
+    ea.expected_attribute,
+    aa.actual_attribute,
+    aa.attribute_value,
+    CASE 
+        WHEN ea.expected_attribute = aa.actual_attribute THEN 'MATCH'
+        WHEN ea.expected_attribute IS NULL THEN 'NO_EXPECTED'
+        WHEN aa.actual_attribute IS NULL THEN 'NO_ACTUAL'
+        ELSE 'MISMATCH'
+    END as match_status
+FROM expected_attrs ea
+FULL OUTER JOIN actual_attrs aa 
+    ON ea.document_id = aa.document_id 
+    AND ea.expected_attribute = aa.actual_attribute
+ORDER BY ea.expected_attribute, aa.actual_attribute;
+
+-- Test the JSON flattening in the view - should show individual attributes
+SELECT 
+    document_id,
+    file_name,
+    attribute_name,
+    attribute_value
+FROM document_db.s3_documents.document_processing_summary
+WHERE file_name LIKE '%infographic%'
+ORDER BY document_id, attribute_name;
 
 -- =============================
 -- AUTO-REFRESH TESTING & MONITORING

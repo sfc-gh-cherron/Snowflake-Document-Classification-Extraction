@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 # App config & session
 st.set_page_config(
-    page_title="Snowflake Document AI Pipeline Dashboard", 
+    page_title="Document Classification & Extraction Dashboard", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -258,9 +258,22 @@ def load_custom_css():
         margin: 2rem 0;
     }
     
-    /* Sidebar button spacing - keep first button position, restore original spacing for others */
-    section[data-testid="stSidebar"] div.stButton:first-of-type {
-        margin-top: 3rem;
+    /* Sidebar navigation selectbox styling */
+    section[data-testid="stSidebar"] .stSelectbox > label {
+        font-weight: 600;
+        color: var(--mid-blue);
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    section[data-testid="stSidebar"] .stSelectbox > div > div {
+        border-radius: 8px;
+        border: 2px solid var(--snowflake-blue);
+    }
+    
+    /* Sidebar element spacing */
+    section[data-testid="stSidebar"] .element-container {
+        margin-bottom: 0.5rem !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -621,6 +634,7 @@ def render_processing_status_chart():
         title="Pipeline Processing Status",
         xaxis_title="Processing Stage",
         yaxis_title="Document Count",
+        yaxis=dict(dtick=1),  # Force whole numbers on y-axis
         showlegend=False
     )
     
@@ -656,23 +670,74 @@ def render_recent_documents():
 if "nav" not in st.session_state:
     st.session_state.nav = "dashboard"
 
-# Sidebar Navigation with clean styling
-st.sidebar.markdown('<h3 class="section-header-spaced">Navigation</h3>', unsafe_allow_html=True)
+# Modern Navigation Pane
+st.sidebar.markdown("""
+<div style="text-align: center; padding: 0.5rem 0; margin-bottom: 1rem;">
+    <div style="height: 3px; background: linear-gradient(90deg, #29B5E8, #71D3DC); margin: 0.5rem 0;"></div>
+</div>
+""", unsafe_allow_html=True)
 
-nav_options = {
-    "Dashboard": "dashboard",
-    "Document Explorer": "explorer", 
-    "Document Assistant": "search",
-    "Pipeline Control": "control",
-    "Analytics": "analytics"
-}
+# Navigation options with icons and descriptions
+nav_options = [
+    {"label": "🏠 Dashboard", "key": "dashboard", "desc": "Overview & Metrics"},
+    {"label": "📁 Document Explorer", "key": "explorer", "desc": "Browse Documents"}, 
+    {"label": "💬 Document Assistant", "key": "search", "desc": "AI Chat & Search"},
+    {"label": "⚙️ Pipeline Control", "key": "control", "desc": "Manage Processing"},
+    {"label": "📈 Analytics", "key": "analytics", "desc": "Reports & Insights"},
+    {"label": "💰 Cost Monitoring", "key": "costs", "desc": "Pipeline Expenses"}
+]
 
-for label, key in nav_options.items():
-    if st.sidebar.button(label, use_container_width=True):
-        st.session_state.nav = key
+# Create navigation with modern styling using radio buttons
+nav_labels = [f"{item['label']} - {item['desc']}" for item in nav_options]
+nav_keys = [item['key'] for item in nav_options]
 
-st.sidebar.markdown("---")
-st.sidebar.caption("Built with Snowflake Cortex AI")
+# Find current selection index
+try:
+    current_index = nav_keys.index(st.session_state.nav)
+except ValueError:
+    current_index = 0
+
+# Custom styled navigation using selectbox
+selected_nav = st.sidebar.selectbox(
+    "Navigate to:",
+    options=nav_keys,
+    format_func=lambda x: next(item['label'] for item in nav_options if item['key'] == x),
+    index=current_index,
+    key="nav_selector"
+)
+
+# Update session state if selection changed
+if selected_nav != st.session_state.nav:
+    st.session_state.nav = selected_nav
+    st.rerun()
+
+# Display current page info with modern styling
+current_nav = next(item for item in nav_options if item['key'] == st.session_state.nav)
+st.sidebar.markdown(f"""
+<div style="
+    background: linear-gradient(135deg, #29B5E8, #71D3DC);
+    border-radius: 12px;
+    padding: 1rem;
+    margin: 1rem 0;
+    text-align: center;
+">
+    <div style="font-weight: 600; color: white; font-size: 1rem;">
+        {current_nav['label']}
+    </div>
+    <div style="font-size: 0.8rem; color: rgba(255,255,255,0.9); margin-top: 0.3rem;">
+        {current_nav['desc']}
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Footer
+st.sidebar.markdown("""
+<div style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; text-align: center;">
+    <div style="color: #64748b; font-size: 0.8rem;">
+        Powered by <strong style="color: #29B5E8;">Snowflake Cortex AI</strong>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
 # Page Routing
@@ -683,7 +748,7 @@ if st.session_state.nav == "dashboard":
     # Professional header
     st.markdown("""
     <div class="header-card">
-        <h1>Document AI Pipeline Dashboard</h1>
+        <h1>Document Classification & Extraction Dashboard</h1>
         <p>Real-time overview of your intelligent document processing pipeline powered by Snowflake Cortex AI</p>
     </div>
     """, unsafe_allow_html=True)
@@ -1110,6 +1175,29 @@ elif st.session_state.nav == "control":
                 except Exception as e:
                     st.error(f"Chunking failed: {e}")
     
+    # Additional pipeline operations
+    st.markdown("**Additional Operations:**")
+    col5, col6, col7, col8 = st.columns(4)
+    
+    with col6:
+        if st.button("Run Full Pipeline", use_container_width=True):
+            with st.spinner("Running complete pipeline..."):
+                try:
+                    # Run all procedures in sequence
+                    parse_result = session.sql("CALL document_db.s3_documents.parse_new_documents()").collect()
+                    classify_result = session.sql("CALL document_db.s3_documents.classify_parsed_documents()").collect()
+                    extract_result = session.sql("CALL document_db.s3_documents.extract_attributes_for_classified_documents()").collect()
+                    chunk_result = session.sql("CALL document_db.s3_documents.chunk_classified_documents()").collect()
+                    
+                    st.success("✅ Full pipeline completed successfully!")
+                    st.info(f"Parse: {parse_result[0][0]}")
+                    st.info(f"Classify: {classify_result[0][0]}")
+                    st.info(f"Extract: {extract_result[0][0]}")
+                    st.info(f"Chunk: {chunk_result[0][0]}")
+                    st.info("📋 Flattened view automatically updated with new extractions")
+                except Exception as e:
+                    st.error(f"Pipeline execution failed: {e}")
+    
     st.markdown("---")
     
     # Task status
@@ -1290,6 +1378,338 @@ elif st.session_state.nav == "analytics":
             st.info("No extraction statistics available")
     except Exception as e:
         st.error(f"Error generating extraction stats: {e}")
+    
+    # Flattened Document Processing Summary
+    st.markdown("---")
+    st.subheader("📋 Complete Document Processing Summary")
+    st.markdown("*Each row represents one document-attribute pair (e.g., customer_count: 12,062, fiscal_year: 2025). JSON automatically flattened.*")
+    
+    try:
+        # Get flattened document processing data
+        flattened_query = """
+        SELECT 
+            document_id,
+            file_name,
+            document_type,
+            document_classification,
+            attribute_name,
+            attribute_value,
+            classification_timestamp,
+            extraction_timestamp
+        FROM document_db.s3_documents.document_processing_summary
+        ORDER BY document_id, attribute_name
+        LIMIT 500
+        """
+        flattened_df = session.sql(flattened_query).to_pandas()
+        
+        if not flattened_df.empty:
+            # Add download button for the flattened data
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                csv_data = flattened_df.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download CSV",
+                    data=csv_data,
+                    file_name="document_processing_summary.csv",
+                    mime="text/csv"
+                )
+            
+            # Display summary statistics
+            st.markdown("**Summary Statistics:**")
+            stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
+            
+            with stats_col1:
+                st.metric("Total Documents", flattened_df['DOCUMENT_ID'].nunique())
+            with stats_col2:
+                st.metric("Document Types", flattened_df['DOCUMENT_CLASSIFICATION'].nunique())
+            with stats_col3:
+                st.metric("Unique Attributes", flattened_df['ATTRIBUTE_NAME'].nunique())
+            with stats_col4:
+                st.metric("Total Extractions", len(flattened_df))
+            
+            # Display the flattened table
+            st.markdown("**Complete Processing Results (JSON automatically flattened into individual attributes):**")
+            st.dataframe(
+                flattened_df,
+                use_container_width=True,
+                column_config={
+                    "DOCUMENT_ID": st.column_config.TextColumn("Document ID", width="medium"),
+                    "FILE_NAME": st.column_config.TextColumn("File Name", width="large"),
+                    "DOCUMENT_TYPE": st.column_config.TextColumn("File Type", width="small"),
+                    "DOCUMENT_CLASSIFICATION": st.column_config.TextColumn("Classification", width="medium"),
+                    "ATTRIBUTE_NAME": st.column_config.TextColumn("Attribute", width="medium"),
+                    "ATTRIBUTE_VALUE": st.column_config.TextColumn("Value", width="large"),
+                    "CLASSIFICATION_TIMESTAMP": st.column_config.DatetimeColumn("Classified", width="medium"),
+                    "EXTRACTION_TIMESTAMP": st.column_config.DatetimeColumn("Extracted", width="medium")
+                },
+                hide_index=True
+            )
+            
+            # Show attribute distribution
+            if 'ATTRIBUTE_NAME' in flattened_df.columns:
+                st.markdown("**Attribute Distribution:**")
+                attr_counts = flattened_df['ATTRIBUTE_NAME'].value_counts().head(10)
+                fig = px.bar(
+                    x=attr_counts.values,
+                    y=attr_counts.index,
+                    orientation='h',
+                    title="Top 10 Most Extracted Attributes",
+                    labels={'x': 'Count', 'y': 'Attribute Name'}
+                )
+                fig.update_layout(height=400)
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No flattened document processing data available")
+    except Exception as e:
+        st.error(f"Error fetching flattened document data: {e}")
+
+# ========================= COST MONITORING =========================
+elif st.session_state.nav == "costs":
+    st.markdown("""
+    <div class="header-card">
+        <h1>💰 Cost Monitoring</h1>
+        <p>Track and analyze pipeline expenses across AI functions, compute, and storage</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Refresh button
+    if st.button("🔄 Refresh Cost Data", type="primary"):
+        st.rerun()
+    
+    st.markdown("---")
+    
+    # Cost Overview Metrics
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    # Initialize variables for broader scope
+    total_calls = 0
+    parse_calls = 0
+    classify_calls = 0
+    extract_calls = 0
+    search_calls = 0
+    estimated_parse_cost = 0
+    estimated_classify_cost = 0
+    estimated_extract_cost = 0
+    estimated_search_cost = 0
+    total_estimated_cost = 0
+    ai_usage_df = None
+    
+    try:
+        # Get AI function usage costs (estimated)
+        ai_usage_query = """
+        SELECT 
+            COUNT(*) as total_ai_calls,
+            COUNT(CASE WHEN pd.parsed_content IS NOT NULL THEN 1 END) as parse_calls,
+            COUNT(CASE WHEN dc.document_class IS NOT NULL THEN 1 END) as classify_calls,
+            COUNT(CASE WHEN de.attribute_name IS NOT NULL THEN 1 END) as extract_calls
+        FROM document_db.s3_documents.parsed_documents pd
+        LEFT JOIN document_db.s3_documents.document_classifications dc ON pd.document_id = dc.document_id
+        LEFT JOIN document_db.s3_documents.document_extractions de ON pd.document_id = de.document_id
+        WHERE pd.parse_timestamp >= CURRENT_DATE - 30
+        """
+        ai_usage_df = session.sql(ai_usage_query).to_pandas()
+        
+        if not ai_usage_df.empty:
+            total_calls = ai_usage_df['TOTAL_AI_CALLS'].iloc[0]
+            parse_calls = ai_usage_df['PARSE_CALLS'].iloc[0]
+            classify_calls = ai_usage_df['CLASSIFY_CALLS'].iloc[0]
+            extract_calls = ai_usage_df['EXTRACT_CALLS'].iloc[0]
+            
+            # Get Cortex Search usage
+            try:
+                search_usage_query = """
+                SELECT COUNT(*) as search_calls
+                FROM document_db.s3_documents.document_chunks
+                WHERE created_timestamp >= CURRENT_DATE - 30
+                """
+                search_df = session.sql(search_usage_query).to_pandas()
+                search_calls = search_df['SEARCH_CALLS'].iloc[0] if not search_df.empty else 0
+            except:
+                search_calls = 0
+            
+            # Estimated costs (based on Snowflake pricing)
+            # AI_PARSE_DOCUMENT: ~$0.002 per page, AI_CLASSIFY: ~$0.001 per call
+            # AI_EXTRACT: ~$0.0015 per call, Cortex Search: ~$0.0005 per search
+            estimated_parse_cost = parse_calls * 0.002
+            estimated_classify_cost = classify_calls * 0.001
+            estimated_extract_cost = extract_calls * 0.0015
+            estimated_search_cost = search_calls * 0.0005
+            total_estimated_cost = estimated_parse_cost + estimated_classify_cost + estimated_extract_cost + estimated_search_cost
+            
+            with col1:
+                st.metric("Parse Calls", f"{parse_calls:,}", help="AI_PARSE_DOCUMENT function calls")
+            with col2:
+                st.metric("Classify Calls", f"{classify_calls:,}", help="AI_CLASSIFY function calls")
+            with col3:
+                st.metric("Extract Calls", f"{extract_calls:,}", help="AI_EXTRACT function calls")
+            with col4:
+                st.metric("Search Calls", f"{search_calls:,}", help="Cortex Search service calls")
+            with col5:
+                st.metric("Total AI Cost", f"${total_estimated_cost:.2f}", help="Estimated total cost for all AI services")
+        
+    except Exception as e:
+        st.error(f"Error fetching AI usage data: {e}")
+        with col1:
+            st.metric("Parse Calls", "N/A")
+        with col2:
+            st.metric("Classify Calls", "N/A")
+        with col3:
+            st.metric("Extract Calls", "N/A")
+        with col4:
+            st.metric("Search Calls", "N/A")
+        with col5:
+            st.metric("Total AI Cost", "N/A")
+    
+    st.markdown("---")
+    
+    # Cost Breakdown Charts
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📊 Daily AI Function Usage")
+        try:
+            daily_usage_query = """
+            SELECT 
+                DATE(pd.parse_timestamp) as usage_date,
+                COUNT(*) as total_calls,
+                COUNT(CASE WHEN pd.parsed_content IS NOT NULL THEN 1 END) as parse_calls,
+                COUNT(CASE WHEN dc.document_class IS NOT NULL THEN 1 END) as classify_calls,
+                COUNT(CASE WHEN de.attribute_name IS NOT NULL THEN 1 END) as extract_calls
+            FROM document_db.s3_documents.parsed_documents pd
+            LEFT JOIN document_db.s3_documents.document_classifications dc ON pd.document_id = dc.document_id
+            LEFT JOIN document_db.s3_documents.document_extractions de ON pd.document_id = de.document_id
+            WHERE pd.parse_timestamp >= CURRENT_DATE - 30
+            GROUP BY DATE(pd.parse_timestamp)
+            ORDER BY usage_date DESC
+            LIMIT 30
+            """
+            daily_df = session.sql(daily_usage_query).to_pandas()
+            
+            if not daily_df.empty:
+                fig = px.line(
+                    daily_df, 
+                    x='USAGE_DATE', 
+                    y=['PARSE_CALLS', 'CLASSIFY_CALLS', 'EXTRACT_CALLS'],
+                    title="AI Function Calls Over Time",
+                    labels={'value': 'Number of Calls', 'USAGE_DATE': 'Date'}
+                )
+                fig.update_layout(yaxis=dict(dtick=1))  # Force whole numbers
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No usage data available for the last 30 days")
+        except Exception as e:
+            st.error(f"Error generating usage chart: {e}")
+    
+    with col2:
+        st.subheader("💵 Estimated Cost Breakdown")
+        try:
+            if ai_usage_df is not None and not ai_usage_df.empty and total_calls > 0:
+                cost_data = {
+                    'Function': ['AI_PARSE_DOCUMENT', 'AI_CLASSIFY', 'AI_EXTRACT', 'CORTEX_SEARCH'],
+                    'Calls': [parse_calls, classify_calls, extract_calls, search_calls],
+                    'Est_Cost': [estimated_parse_cost, estimated_classify_cost, estimated_extract_cost, estimated_search_cost]
+                }
+                cost_df = pd.DataFrame(cost_data)
+                cost_df = cost_df[cost_df['Calls'] > 0]  # Only show functions with usage
+                
+                fig = px.pie(
+                    cost_df,
+                    values='Est_Cost',
+                    names='Function',
+                    title="Cost Distribution by AI Function"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No cost data available")
+        except Exception as e:
+            st.error(f"Error generating cost breakdown: {e}")
+    
+    st.markdown("---")
+    
+    # Detailed Cost Analysis
+    st.subheader("📋 Detailed Cost Analysis")
+    
+    # Cost per document type
+    try:
+        cost_by_type_query = """
+        SELECT 
+            COALESCE(dc.document_class, 'unclassified') as doc_type,
+            COUNT(*) as document_count,
+            COUNT(CASE WHEN pd.parsed_content IS NOT NULL THEN 1 END) as parsed_count,
+            COUNT(CASE WHEN de.attribute_name IS NOT NULL THEN 1 END) as extract_count,
+            COUNT(CASE WHEN ch.chunk_text IS NOT NULL THEN 1 END) as search_count,
+            AVG(pd.file_size) as avg_file_size
+        FROM document_db.s3_documents.parsed_documents pd
+        LEFT JOIN document_db.s3_documents.document_classifications dc ON pd.document_id = dc.document_id
+        LEFT JOIN document_db.s3_documents.document_extractions de ON pd.document_id = de.document_id
+        LEFT JOIN document_db.s3_documents.document_chunks ch ON pd.document_id = ch.document_id
+        WHERE pd.parse_timestamp >= CURRENT_DATE - 30
+        GROUP BY dc.document_class
+        ORDER BY document_count DESC
+        """
+        cost_type_df = session.sql(cost_by_type_query).to_pandas()
+        
+        if not cost_type_df.empty:
+            # Calculate estimated costs per document type
+            cost_type_df['ESTIMATED_PARSE_COST'] = cost_type_df['PARSED_COUNT'] * 0.002
+            cost_type_df['ESTIMATED_CLASSIFY_COST'] = cost_type_df['DOCUMENT_COUNT'] * 0.001
+            cost_type_df['ESTIMATED_EXTRACT_COST'] = cost_type_df['EXTRACT_COUNT'] * 0.0015
+            cost_type_df['ESTIMATED_SEARCH_COST'] = cost_type_df['SEARCH_COUNT'] * 0.0005
+            cost_type_df['ESTIMATED_TOTAL_COST'] = (cost_type_df['ESTIMATED_PARSE_COST'] + 
+                                                   cost_type_df['ESTIMATED_CLASSIFY_COST'] + 
+                                                   cost_type_df['ESTIMATED_EXTRACT_COST'] + 
+                                                   cost_type_df['ESTIMATED_SEARCH_COST'])
+            
+            st.dataframe(
+                cost_type_df[['DOC_TYPE', 'DOCUMENT_COUNT', 'PARSED_COUNT', 'EXTRACT_COUNT', 'SEARCH_COUNT', 'AVG_FILE_SIZE', 'ESTIMATED_TOTAL_COST']],
+                column_config={
+                    'DOC_TYPE': 'Document Type',
+                    'DOCUMENT_COUNT': 'Total Documents',
+                    'PARSED_COUNT': 'Parsed Documents',
+                    'EXTRACT_COUNT': 'Extracted Documents',
+                    'SEARCH_COUNT': 'Searchable Documents',
+                    'AVG_FILE_SIZE': st.column_config.NumberColumn('Avg File Size (bytes)', format="%.0f"),
+                    'ESTIMATED_TOTAL_COST': st.column_config.NumberColumn('Estimated Cost ($)', format="$%.3f")
+                },
+                use_container_width=True
+            )
+        else:
+            st.info("No document processing data available")
+    except Exception as e:
+        st.error(f"Error generating cost analysis: {e}")
+    
+    # Additional Cost Metrics
+    st.markdown("---")
+    st.subheader("📊 Cost Breakdown by Service")
+    
+    # Show individual service costs
+    if total_estimated_cost > 0:
+        service_col1, service_col2, service_col3, service_col4 = st.columns(4)
+        
+        with service_col1:
+            st.metric(
+                "AI Parse Cost", 
+                f"${estimated_parse_cost:.3f}",
+                help="Cost for AI_PARSE_DOCUMENT function calls"
+            )
+        with service_col2:
+            st.metric(
+                "AI Classify Cost", 
+                f"${estimated_classify_cost:.3f}",
+                help="Cost for AI_CLASSIFY function calls"
+            )
+        with service_col3:
+            st.metric(
+                "AI Extract Cost", 
+                f"${estimated_extract_cost:.3f}",
+                help="Cost for AI_EXTRACT function calls"
+            )
+        with service_col4:
+            st.metric(
+                "Search Cost", 
+                f"${estimated_search_cost:.3f}",
+                help="Cost for Cortex Search service usage"
+            )
 
 # Footer with Snowflake branding
 st.markdown("---")
