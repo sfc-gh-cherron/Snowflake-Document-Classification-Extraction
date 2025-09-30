@@ -12,7 +12,7 @@ An intelligent, automated document processing pipeline that transforms unstructu
 
 ---
 
-## 🎯 Key Highlights
+## Key Highlights
 
 - **Real-time & Event-driven**: Auto-Refresh Directory Tables + Streams/Tasks process documents within seconds of S3 upload
 - **Scalable**: Serverless Tasks auto-scale compute resources based on document volume
@@ -23,13 +23,9 @@ An intelligent, automated document processing pipeline that transforms unstructu
 - **Multi-Format Support**: PDF, DOCX, PPTX, JPEG, JPG, PNG, TIFF, TIF, HTML, TXT
 - **Cost-Effective**: Documents live in S3—no need to load into Snowflake storage
 
-**Architecture Patterns:**
-- Built on [AWS document processing pipeline patterns](https://aws.amazon.com/blogs/architecture/building-a-scalable-document-pre-processing-pipeline/)
-- Implements [intelligent governance for regulated industries](https://aws.amazon.com/blogs/machine-learning/intelligent-governance-of-document-processing-pipelines-for-regulated-industries/)
-
 ---
 
-## 📊 Architecture
+## Architecture
 
 ![Architecture Diagram](architecture_diagram.png)
 
@@ -46,18 +42,97 @@ An intelligent, automated document processing pipeline that transforms unstructu
 
 ### Key Cortex AI Functions
 
-| Function | Purpose | Billing |
-|----------|---------|---------|
-| **AI_PARSE_DOCUMENT** | OCR and text extraction | 970 tokens/page (PDF/DOCX/PPTX), 970 tokens/image, 970 tokens/3K chars (HTML/TXT) |
-| **AI_CLASSIFY** | Multi-class document classification | ~$2-3 per 1K documents |
-| **AI_EXTRACT** | Structured data extraction via NLP prompts | ~$5-8 per 1K documents |
-| **CORTEX_SEARCH** | Semantic search and retrieval | ~$1-2 per 1K documents |
+| Function | Purpose |
+|----------|---------|
+| [AI_PARSE_DOCUMENT](https://docs.snowflake.com/en/user-guide/snowflake-cortex/ai-functions#label-cortex-ai-parse-document) | OCR and text extraction from various formats |
+| [AI_CLASSIFY](https://docs.snowflake.com/en/user-guide/snowflake-cortex/ai-functions#label-cortex-ai-classify) | Multi-class document classification |
+| [AI_EXTRACT](https://docs.snowflake.com/en/user-guide/snowflake-cortex/ai-functions#label-cortex-ai-extract) | Structured data extraction using natural language prompts |
+| [CORTEX_SEARCH](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview) | Semantic search and retrieval |
 
 **Limits:** 500 pages per document, 100 MB file size
 
 ---
 
-## 📁 Document Classifications & Attributes
+## Quick Start
+
+### Prerequisites
+
+- Snowflake account with Cortex AI enabled
+- AWS S3 bucket with appropriate IAM permissions
+- `COMPUTE_WH` warehouse (or equivalent)
+- `ACCOUNTADMIN` role access for initial setup
+
+### Setup Steps
+
+**1. Configure S3 Integration**
+
+Update `01_s3_integration_setup.sql` with your AWS credentials:
+
+```sql
+STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::YOUR-ACCOUNT:role/YOUR-SNOWFLAKE-ROLE'
+URL = 's3://your-bucket-name/'
+```
+
+**2. Deploy Pipeline**
+
+Execute the setup scripts in Snowsight or your preferred SQL client:
+
+```sql
+-- First, run 01_s3_integration_setup.sql
+-- This creates the external stage and storage integration
+
+-- Then, run 02_document_pipeline_setup.sql  
+-- This creates tables, procedures, tasks, and the Cortex Search service
+```
+
+**3. Configure S3 Event Notifications**
+
+- Copy the `DIRECTORY_NOTIFICATION_CHANNEL` ARN from step 2 output
+- In AWS S3 Console: Properties → Event notifications → Create event notification
+- Configure: All object create/remove events → SQS Queue → Paste ARN
+- Result: Real-time automatic pipeline triggering within seconds
+
+**4. Launch Dashboard**
+
+Create the Streamlit app in Snowsight:
+
+1. Navigate to **Streamlit** in the left sidebar
+2. Click **+ Streamlit App**
+3. Configure:
+   - **Database**: `DOCUMENT_DB`
+   - **Schema**: `S3_DOCUMENTS`
+   - **Warehouse**: `COMPUTE_WH`
+   - **App name**: `document_ai_dashboard`
+4. Click **Create**
+5. Copy the contents of `streamlit_document_assistant.py` 
+6. Paste into the Snowsight code editor
+7. Click **Run** to launch the application
+
+---
+
+## Database Schema
+
+### Core Tables
+
+| Table | Purpose |
+|-------|---------|
+| `parsed_documents` | Raw parsed document content from AI_PARSE_DOCUMENT |
+| `document_classifications` | Classification results from AI_CLASSIFY |
+| `document_extractions` | Structured extracted data from AI_EXTRACT |
+| `extraction_prompts` | Question templates for each document type (79 prompts) |
+| `document_chunks` | Searchable text chunks for Cortex Search |
+| `cortex_search_service` | Semantic search index |
+
+### Flattened View
+
+**`document_processing_summary`** - Combines all data into flattened attribute-value pairs:
+- Automatically flattens JSON extractions into individual rows
+- Includes NULL values (valid for attributes without extracted values)
+- One row per document-attribute pair for easy querying
+
+---
+
+## Document Classifications & Attributes
 
 ### 1. W2 Tax Form (10 attributes)
 **Classification:** `w2` | **Location:** `demo_docs/w2s/`
@@ -238,179 +313,7 @@ An intelligent, automated document processing pipeline that transforms unstructu
 
 ---
 
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Snowflake account with Cortex AI enabled
-- AWS S3 bucket with appropriate IAM permissions
-- `COMPUTE_WH` warehouse (or equivalent)
-- `ACCOUNTADMIN` role access for initial setup
-
-### Setup Steps
-
-**1. Configure S3 Integration** - Update `01_s3_integration_setup.sql`:
-```sql
-STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::YOUR-ACCOUNT:role/YOUR-SNOWFLAKE-ROLE'
-URL = 's3://your-bucket-name/'
-```
-
-**2. Deploy Pipeline**:
-```bash
-snowsql -f 01_s3_integration_setup.sql
-snowsql -f 02_document_pipeline_setup.sql
-```
-
-**3. Configure S3 Event Notifications**:
-- Copy the `DIRECTORY_NOTIFICATION_CHANNEL` ARN from step 2 output
-- In AWS S3 Console: Properties → Event notifications → Create event notification
-- Configure: All object create/remove events → SQS Queue → Paste ARN
-- Result: Real-time automatic pipeline triggering within seconds
-
-**4. Launch Dashboard**:
-```sql
-CREATE STREAMLIT document_db.s3_documents.document_ai_dashboard
-  FROM 'streamlit_document_assistant.py'
-  MAIN_FILE = 'streamlit_document_assistant.py';
-```
-
----
-
-## 💻 Usage
-
-### Basic Document Processing
-
-**Upload & Monitor:**
-1. Upload documents to your S3 bucket
-2. Monitor processing:
-   ```sql
-   SELECT * FROM document_db.s3_documents.parsed_documents;
-   SELECT * FROM document_db.s3_documents.document_classifications;
-   ```
-
-**View Extracted Data:**
-```sql
--- Flattened view with all extractions
-SELECT * FROM document_db.s3_documents.document_processing_summary;
-
--- Specific document extractions
-SELECT file_name, document_class, attribute_name, attribute_value
-FROM document_db.s3_documents.document_extractions
-WHERE file_name = 'your_document.pdf'
-ORDER BY attribute_name;
-```
-
-**Manual Pipeline Execution:**
-```sql
-CALL document_db.s3_documents.parse_new_documents();
-CALL document_db.s3_documents.classify_parsed_documents();
-CALL document_db.s3_documents.extract_attributes_for_classified_documents();
-CALL document_db.s3_documents.chunk_classified_documents();
-```
-
-### Semantic Search
-
-**Search documents using Cortex Search:**
-```sql
-SELECT * FROM TABLE(
-  document_db.s3_documents.document_search_service.SEARCH(
-    'What are our contract renewal deadlines?', 10
-  )
-);
-```
-
-### Dashboard Features
-
-- **Pipeline Overview**: Real-time processing metrics and status
-- **Document Explorer**: Browse individual documents and extracted data
-- **AI Assistant**: Chat with your documents using RAG (Retrieval Augmented Generation)
-- **Pipeline Control**: Manual processing triggers and task management
-- **Analytics**: Processing trends, performance insights, cost monitoring
-- **Cost Monitoring**: Track AI usage and estimated costs across all Cortex functions
-
----
-
-## 🗃️ Database Schema
-
-### Core Tables
-
-| Table | Purpose |
-|-------|---------|
-| `parsed_documents` | Raw parsed document content from AI_PARSE_DOCUMENT |
-| `document_classifications` | Classification results from AI_CLASSIFY |
-| `document_extractions` | Structured extracted data from AI_EXTRACT |
-| `extraction_prompts` | Question templates for each document type (79 prompts) |
-| `document_chunks` | Searchable text chunks for Cortex Search |
-| `cortex_search_service` | Semantic search index |
-
-### Flattened View
-
-**`document_processing_summary`** - Combines all data into flattened attribute-value pairs:
-- Automatically flattens JSON extractions into individual rows
-- Includes NULL values (valid for attributes without extracted values)
-- One row per document-attribute pair for easy querying
-
----
-
-## 📈 Analytics Capabilities
-
-### What You Can Query
-
-**1. Contract Analytics**
-- Total contract value by vendor
-- Expiring contracts in next 90 days
-- Auto-renewal contract list
-- Payment terms distribution
-
-**2. Sales Analytics**
-- Revenue trends by quarter
-- Top performing regions
-- Average deal size trends
-- Quota attainment by period
-
-**3. Marketing Analytics**
-- Campaign ROI comparison
-- Cost per acquisition trends
-- Conversion rate by campaign type
-- Budget utilization
-
-**4. HR/Policy Analytics**
-- Policy review dates tracking
-- Version control audit trail
-- Approval authority mapping
-- Policy effective date timeline
-
-**5. Financial Analytics**
-- Revenue growth trajectories
-- Margin analysis over time
-- Customer count trends
-- NRR performance tracking
-
----
-
-## 💰 Cost Optimization
-
-### Estimated Costs (Per 1,000 Documents)
-
-| Service | Cost Range |
-|---------|------------|
-| AI_PARSE_DOCUMENT | ~$10-15 (varies by doc size) |
-| AI_CLASSIFY | ~$2-3 |
-| AI_EXTRACT | ~$5-8 (varies by attributes) |
-| CORTEX_SEARCH | ~$1-2 (storage + queries) |
-| **Total** | **~$18-28 per 1,000 documents** |
-
-### Cost Reduction Tips
-
-1. **Batch Processing**: Process documents in batches instead of real-time when possible
-2. **Document Type Filters**: Skip unnecessary parsing for known document types
-3. **Optimize Prompts**: Keep extraction prompts concise to reduce token usage
-4. **Chunking Parameters**: Set chunk size based on actual search needs
-5. **Monitor Usage**: Use the Streamlit cost dashboard to track AI usage and identify optimization opportunities
-
----
-
-## 🛠️ Core Components
+## Core Components
 
 ### Stored Procedures
 
@@ -436,61 +339,107 @@ SHOW TASKS IN SCHEMA document_db.s3_documents;
 
 ---
 
-## 🔧 Troubleshooting
+## Cost Analysis
 
-### Common Issues
+### Pricing Details
 
-**Documents not processing:**
-- Check tasks are running: `SHOW TASKS IN SCHEMA document_db.s3_documents;`
-- Verify stream has data: `SELECT COUNT(*) FROM document_db.s3_documents.new_documents_stream;`
-- Resume tasks if suspended: `ALTER TASK <task_name> RESUME;`
+Snowflake Cortex AI functions are billed based on token consumption. All pricing is in Snowflake credits.
 
-**Classification errors:**
-- Test AI functions manually with sample documents
-- Verify document formats are supported
-- Check task history: `SELECT * FROM TABLE(INFORMATION_SCHEMA.TASK_HISTORY());`
+#### AI_PARSE_DOCUMENT
 
-**No extracted attributes:**
-- Verify extraction prompts exist: `SELECT * FROM document_db.s3_documents.extraction_prompts;`
-- Check document classification matches prompt document_class
-- Review extraction results: `SELECT * FROM document_db.s3_documents.document_extractions;`
+**Token Calculation:**
+- PDF/DOCX/PPTX: 970 tokens per page
+- Images (JPEG, PNG, TIFF): 970 tokens per image
+- HTML/TXT: 970 tokens per 3,000 characters
 
-**"Invalid identifier 'LAST_MODIFIED'" error:**
-- This was fixed in the latest version
-- Re-run `02_document_pipeline_setup.sql` to update procedures
+**Pricing (as of September 2025):**
+- **Standard Edition**: 0.0004 credits per 1,000 tokens
+- **Enterprise Edition**: 0.0004 credits per 1,000 tokens
 
-### Manual Operations
+**Example Cost:**
+- 100-page PDF = 97,000 tokens = 0.0388 credits (~$0.04 at $1/credit)
+- 1,000 pages = 0.388 credits (~$0.39)
 
-**Reset pipeline:**
-```bash
-snowsql -f 03_cleanup_utilities.sql
-```
+#### AI_CLASSIFY
 
-**Reprocess specific documents:**
+**Pricing:**
+- **Standard/Enterprise**: 0.00055 credits per 1,000 tokens
+
+**Typical Usage:**
+- Classification uses the full document text (up to token limits)
+- Average document (5 pages, ~1,500 words) ≈ 2,000 tokens
+- Cost per document: ~0.0011 credits (~$0.001)
+- 1,000 documents: ~1.1 credits (~$1.10)
+
+#### AI_EXTRACT
+
+**Pricing:**
+- **Standard/Enterprise**: 0.00055 credits per 1,000 tokens
+
+**Usage Pattern:**
+- Uses document content + extraction prompts
+- 9 document types with 4-10 attributes each
+- Average: 3,000-5,000 tokens per document extraction
+- Cost per document: ~0.0017-0.0028 credits (~$0.002-$0.003)
+- 1,000 documents: ~1.7-2.8 credits (~$1.70-$2.80)
+
+#### CORTEX_SEARCH
+
+**Pricing:**
+- **Storage**: Minimal cost for search index (based on storage pricing)
+- **Query**: 0.00055 credits per 1,000 tokens
+- **Typical search query**: 100-500 tokens
+- Cost per search: ~0.00006-0.00028 credits (~$0.00006-$0.00028)
+
+### Total Cost Estimate (Per 1,000 Documents)
+
+Assuming average document complexity:
+- **AI_PARSE_DOCUMENT**: ~$3.88 (10 pages avg)
+- **AI_CLASSIFY**: ~$1.10
+- **AI_EXTRACT**: ~$2.25 (avg 7 attributes)
+- **CORTEX_SEARCH**: ~$0.50 (including indexing and queries)
+
+**Total: ~$7.73 per 1,000 documents** (at $1 per credit)
+
+### Cost Optimization Strategies
+
+1. **Batch Processing**: Process documents in scheduled batches to optimize resource usage
+2. **Selective Parsing**: Skip AI_PARSE_DOCUMENT for documents already in text format
+3. **Prompt Optimization**: Keep extraction prompts concise to reduce token consumption
+4. **Chunking Strategy**: Optimize chunk size based on actual search requirements
+5. **Monitor Usage**: Use Streamlit dashboard to track usage patterns and identify optimization opportunities
+6. **Classification Caching**: Reuse classifications for similar document types
+7. **Incremental Processing**: Only process new/changed documents
+
+### Monitoring Costs
+
+View your AI function usage in the Streamlit dashboard or query directly:
+
 ```sql
-UPDATE document_db.s3_documents.parsed_documents 
-SET status = 'parsed' 
-WHERE file_name = 'your_document.pdf';
+-- View parse operations
+SELECT COUNT(*) as total_parses, 
+       SUM(LENGTH(content_text)) / 1000 as approx_tokens_k
+FROM document_db.s3_documents.parsed_documents
+WHERE parse_timestamp >= DATEADD(day, -30, CURRENT_TIMESTAMP());
 
-CALL document_db.s3_documents.classify_parsed_documents();
-```
-
-**View task execution history:**
-```sql
-SELECT * 
-FROM TABLE(INFORMATION_SCHEMA.TASK_HISTORY())
-WHERE DATABASE_NAME = 'DOCUMENT_DB'
-ORDER BY SCHEDULED_TIME DESC;
+-- View extractions
+SELECT document_class, 
+       COUNT(*) as extraction_count,
+       COUNT(DISTINCT attribute_name) as unique_attributes
+FROM document_db.s3_documents.document_extractions
+WHERE extraction_timestamp >= DATEADD(day, -30, CURRENT_TIMESTAMP())
+GROUP BY document_class;
 ```
 
 ---
 
-## 📚 References
+## Dashboard Features
 
-- [Snowflake Cortex AI Documentation](https://docs.snowflake.com/en/user-guide/snowflake-cortex)
-- [AWS Document Processing Patterns](https://aws.amazon.com/blogs/architecture/building-a-scalable-document-pre-processing-pipeline/)
-- [Document Governance Best Practices](https://aws.amazon.com/blogs/machine-learning/intelligent-governance-of-document-processing-pipelines-for-regulated-industries/)
+The Streamlit dashboard provides a comprehensive interface for managing and monitoring the document processing pipeline:
 
----
-
-**Built with ❄️ Snowflake Cortex AI**
+- **Pipeline Overview**: Real-time processing metrics and status
+- **Document Explorer**: Browse individual documents and extracted data
+- **AI Assistant**: Chat with your documents using RAG (Retrieval Augmented Generation)
+- **Pipeline Control**: Manual processing triggers and task management
+- **Cost Monitoring**: Track AI usage and estimated costs across all Cortex functions
+- **Search Interface**: Semantic search across all processed documents
