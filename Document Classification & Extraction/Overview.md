@@ -14,11 +14,9 @@ An intelligent, automated document processing pipeline that transforms unstructu
 
 ## Key Highlights
 
-- **Real-time & Event-driven**: Auto-Refresh Directory Tables + Streams/Tasks process documents within seconds of S3 upload
+- **Automated, Real-time, & Event-driven**: Auto-Refresh Directory Tables + Streams/Tasks process documents within seconds of S3 upload
 - **Scalable**: Serverless Tasks auto-scale compute resources based on document volume
 - **Cortex AI-Powered**: Leverages `AI_PARSE_DOCUMENT`, `AI_CLASSIFY`, `AI_EXTRACT`, and `CORTEX_SEARCH`
-- **9 Document Types**: W2s, Contracts, Sales Reports, Marketing Reports, HR/Corporate Policies, Financial Reports, Case Studies, Strategy Docs
-- **79 Attributes**: Comprehensive extraction covering tax forms, contracts, analytics, compliance, and more
 - **Interactive Dashboard**: Streamlit app for visualization, monitoring, and RAG-enabled document chat
 - **Multi-Format Support**: PDF, DOCX, PPTX, JPEG, JPG, PNG, TIFF, TIF, HTML, TXT
 - **Cost-Effective**: Documents live in S3—no need to load into Snowflake storage
