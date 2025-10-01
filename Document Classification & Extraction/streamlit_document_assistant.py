@@ -1754,22 +1754,19 @@ elif st.session_state.nav == "costs":
         SELECT 
             SUM(CASE 
                 WHEN SERVICE_TYPE = 'SERVERLESS_TASK' 
+                    AND NAME IS NOT NULL
                     AND (UPPER(NAME) LIKE '%PARSE_DOCUMENTS_TASK%' 
                         OR UPPER(NAME) LIKE '%CLASSIFY_DOCUMENTS_TASK%' 
                         OR UPPER(NAME) LIKE '%EXTRACT_DOCUMENTS_TASK%'
                         OR UPPER(NAME) LIKE '%CHUNK_DOCUMENTS_TASK%')
                 THEN CREDITS_USED ELSE 0 END) as serverless_credits,
             SUM(CASE 
-                WHEN SERVICE_TYPE = 'AI_SERVICES' 
-                    AND (UPPER(NAME) LIKE '%PARSE_DOCUMENT%' 
-                        OR UPPER(NAME) LIKE '%CLASSIFY%' 
-                        OR UPPER(NAME) LIKE '%EXTRACT%')
+                WHEN SERVICE_TYPE = 'AI_SERVICES'
                 THEN CREDITS_USED ELSE 0 END) as ai_services_credits
         FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_HISTORY
         WHERE DATE(START_TIME) >= '{start_date}'
             AND DATE(START_TIME) <= '{end_date}'
             AND SERVICE_TYPE IN ('SERVERLESS_TASK', 'AI_SERVICES')
-            AND NAME IS NOT NULL
         """
         total_cost_df = session.sql(total_cost_query).to_pandas()
         
@@ -1790,7 +1787,7 @@ elif st.session_state.nav == "costs":
                 st.metric(
                     "Total AI Services Cost", 
                     f"{ai_services_credits:.2f} credits",
-                    help="Total credits for document pipeline AI functions (parse_document, classify, extract) only"
+                    help="Total credits for all AI Services including Cortex AI functions"
                 )
             with col3:
                 st.metric(
@@ -2021,10 +2018,6 @@ elif st.session_state.nav == "costs":
         WHERE SERVICE_TYPE = 'AI_SERVICES'
             AND DATE(START_TIME) >= '{start_date}'
             AND DATE(START_TIME) <= '{end_date}'
-            AND NAME IS NOT NULL
-            AND (UPPER(NAME) LIKE '%PARSE_DOCUMENT%' 
-                OR UPPER(NAME) LIKE '%CLASSIFY%' 
-                OR UPPER(NAME) LIKE '%EXTRACT%')
         GROUP BY DATE(START_TIME)
         ORDER BY usage_date ASC
         """
@@ -2035,7 +2028,7 @@ elif st.session_state.nav == "costs":
                 ai_trend_df,
                 x='USAGE_DATE',
                 y='TOTAL_CREDITS',
-                title="AI Services Credits Over Time (Document Pipeline)",
+                title="AI Services Credits Over Time",
                 labels={'TOTAL_CREDITS': 'Credits', 'USAGE_DATE': 'Date'}
             )
             st.plotly_chart(fig2, use_container_width=True)
@@ -2052,19 +2045,15 @@ elif st.session_state.nav == "costs":
         FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_HISTORY
         WHERE DATE(START_TIME) >= '{start_date}'
             AND DATE(START_TIME) <= '{end_date}'
-            AND SERVICE_TYPE IN ('SERVERLESS_TASK', 'AI_SERVICES')
-            AND NAME IS NOT NULL
             AND (
-                (SERVICE_TYPE = 'SERVERLESS_TASK' AND (
-                    UPPER(NAME) LIKE '%PARSE_DOCUMENTS_TASK%' 
-                    OR UPPER(NAME) LIKE '%CLASSIFY_DOCUMENTS_TASK%' 
-                    OR UPPER(NAME) LIKE '%EXTRACT_DOCUMENTS_TASK%'
-                    OR UPPER(NAME) LIKE '%CHUNK_DOCUMENTS_TASK%'))
+                (SERVICE_TYPE = 'SERVERLESS_TASK' 
+                    AND NAME IS NOT NULL
+                    AND (UPPER(NAME) LIKE '%PARSE_DOCUMENTS_TASK%' 
+                        OR UPPER(NAME) LIKE '%CLASSIFY_DOCUMENTS_TASK%' 
+                        OR UPPER(NAME) LIKE '%EXTRACT_DOCUMENTS_TASK%'
+                        OR UPPER(NAME) LIKE '%CHUNK_DOCUMENTS_TASK%'))
                 OR
-                (SERVICE_TYPE = 'AI_SERVICES' AND (
-                    UPPER(NAME) LIKE '%PARSE_DOCUMENT%' 
-                    OR UPPER(NAME) LIKE '%CLASSIFY%' 
-                    OR UPPER(NAME) LIKE '%EXTRACT%'))
+                (SERVICE_TYPE = 'AI_SERVICES')
             )
         GROUP BY DATE(START_TIME), SERVICE_TYPE
         ORDER BY usage_date ASC
