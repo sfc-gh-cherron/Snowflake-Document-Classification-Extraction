@@ -1708,7 +1708,7 @@ elif st.session_state.nav == "costs":
     st.markdown("""
     <div class="header-card">
         <h1>💰 Cost Monitoring</h1>
-        <p>Track and analyze pipeline expenses across AI functions, compute, and storage</p>
+        <p>Track and analyze Cortex AI services costs using Snowflake metering data</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -1718,87 +1718,173 @@ elif st.session_state.nav == "costs":
     
     st.markdown("---")
     
-    # Cost Overview Metrics
-    col1, col2, col3, col4, col5 = st.columns(5)
-    
-    # Initialize variables for broader scope
-    total_calls = 0
-    parse_calls = 0
-    classify_calls = 0
-    extract_calls = 0
-    search_calls = 0
-    estimated_parse_cost = 0
-    estimated_classify_cost = 0
-    estimated_extract_cost = 0
-    estimated_search_cost = 0
-    total_estimated_cost = 0
-    ai_usage_df = None
+    # AI Services Cost Overview from METERING_DAILY_HISTORY
+    st.subheader("📊 AI Services Cost Overview (Last 30 Days)")
     
     try:
-        # Get AI function usage costs (estimated)
-        ai_usage_query = """
+        # Get AI Services cost from Snowflake Account Usage
+        ai_services_cost_query = """
         SELECT 
-            COUNT(*) as total_ai_calls,
-            COUNT(CASE WHEN pd.parsed_content IS NOT NULL THEN 1 END) as parse_calls,
-            COUNT(CASE WHEN dc.document_class IS NOT NULL THEN 1 END) as classify_calls,
-            COUNT(CASE WHEN de.attribute_name IS NOT NULL THEN 1 END) as extract_calls
-        FROM document_db.s3_documents.parsed_documents pd
-        LEFT JOIN document_db.s3_documents.document_classifications dc ON pd.document_id = dc.document_id
-        LEFT JOIN document_db.s3_documents.document_extractions de ON pd.document_id = de.document_id
-        WHERE pd.parse_timestamp >= CURRENT_DATE - 30
+            SUM(CREDITS_USED) as total_credits,
+            SUM(CREDITS_USED_COMPUTE) as compute_credits,
+            SUM(CREDITS_USED_CLOUD_SERVICES) as cloud_services_credits,
+            COUNT(DISTINCT USAGE_DATE) as days_with_usage,
+            MIN(USAGE_DATE) as first_usage_date,
+            MAX(USAGE_DATE) as last_usage_date
+        FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY
+        WHERE SERVICE_TYPE = 'AI_SERVICES'
+            AND USAGE_DATE >= CURRENT_DATE - 30
         """
-        ai_usage_df = session.sql(ai_usage_query).to_pandas()
+        ai_cost_df = session.sql(ai_services_cost_query).to_pandas()
         
-        if not ai_usage_df.empty:
-            total_calls = ai_usage_df['TOTAL_AI_CALLS'].iloc[0]
-            parse_calls = ai_usage_df['PARSE_CALLS'].iloc[0]
-            classify_calls = ai_usage_df['CLASSIFY_CALLS'].iloc[0]
-            extract_calls = ai_usage_df['EXTRACT_CALLS'].iloc[0]
+        if not ai_cost_df.empty and ai_cost_df['TOTAL_CREDITS'].iloc[0] is not None:
+            total_credits = ai_cost_df['TOTAL_CREDITS'].iloc[0] or 0
+            compute_credits = ai_cost_df['COMPUTE_CREDITS'].iloc[0] or 0
+            cloud_services_credits = ai_cost_df['CLOUD_SERVICES_CREDITS'].iloc[0] or 0
+            days_with_usage = ai_cost_df['DAYS_WITH_USAGE'].iloc[0] or 0
             
-            # Get Cortex Search usage
-            try:
-                search_usage_query = """
-                SELECT COUNT(*) as search_calls
-                FROM document_db.s3_documents.document_chunks
-                WHERE created_timestamp >= CURRENT_DATE - 30
-                """
-                search_df = session.sql(search_usage_query).to_pandas()
-                search_calls = search_df['SEARCH_CALLS'].iloc[0] if not search_df.empty else 0
-            except:
-                search_calls = 0
-            
-            # Estimated costs (based on Snowflake pricing)
-            # AI_PARSE_DOCUMENT: ~$0.002 per page, AI_CLASSIFY: ~$0.001 per call
-            # AI_EXTRACT: ~$0.0015 per call, Cortex Search: ~$0.0005 per search
-            estimated_parse_cost = parse_calls * 0.002
-            estimated_classify_cost = classify_calls * 0.001
-            estimated_extract_cost = extract_calls * 0.0015
-            estimated_search_cost = search_calls * 0.0005
-            total_estimated_cost = estimated_parse_cost + estimated_classify_cost + estimated_extract_cost + estimated_search_cost
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.metric("Parse Calls", f"{parse_calls:,}", help="AI_PARSE_DOCUMENT function calls")
+                st.metric(
+                    "Total AI Credits", 
+                    f"{total_credits:.2f}",
+                    help="Total Snowflake credits consumed by AI services"
+                )
             with col2:
-                st.metric("Classify Calls", f"{classify_calls:,}", help="AI_CLASSIFY function calls")
+                st.metric(
+                    "Compute Credits", 
+                    f"{compute_credits:.2f}",
+                    help="Credits used for AI compute operations"
+                )
             with col3:
-                st.metric("Extract Calls", f"{extract_calls:,}", help="AI_EXTRACT function calls")
+                st.metric(
+                    "Cloud Services Credits", 
+                    f"{cloud_services_credits:.2f}",
+                    help="Credits used for cloud services"
+                )
             with col4:
-                st.metric("Search Calls", f"{search_calls:,}", help="Cortex Search service calls")
-            with col5:
-                st.metric("Total AI Cost", f"${total_estimated_cost:.2f}", help="Estimated total cost for all AI services")
-        
+                st.metric(
+                    "Active Days", 
+                    f"{days_with_usage}",
+                    help="Number of days with AI service usage"
+                )
+        else:
+            st.info("No AI Services cost data available for the last 30 days")
+            
     except Exception as e:
-        st.error(f"Error fetching AI usage data: {e}")
-        with col1:
-            st.metric("Parse Calls", "N/A")
-        with col2:
-            st.metric("Classify Calls", "N/A")
-        with col3:
-            st.metric("Extract Calls", "N/A")
-        with col4:
-            st.metric("Search Calls", "N/A")
-        with col5:
-            st.metric("Total AI Cost", "N/A")
+        st.error(f"Error fetching AI Services cost data: {str(e)}")
+        st.info("Note: METERING_DAILY_HISTORY requires ACCOUNTADMIN privileges or proper grants")
+    
+    st.markdown("---")
+    
+    # Cortex Functions Usage Details with Token Information
+    st.subheader("🔍 Cortex Functions Usage & Token Details")
+    
+    try:
+        # Get detailed Cortex function usage with tokens
+        cortex_usage_query = """
+        SELECT 
+            FUNCTION_NAME,
+            SUM(TOKENS_CONSUMED) as total_tokens,
+            SUM(CREDITS_USED) as total_credits,
+            COUNT(*) as usage_count,
+            AVG(TOKENS_CONSUMED) as avg_tokens_per_call,
+            MAX(TOKENS_CONSUMED) as max_tokens_per_call,
+            MIN(START_TIME) as first_usage,
+            MAX(END_TIME) as last_usage
+        FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY
+        WHERE START_TIME >= CURRENT_DATE - 30
+        GROUP BY FUNCTION_NAME
+        ORDER BY total_credits DESC
+        """
+        cortex_df = session.sql(cortex_usage_query).to_pandas()
+        
+        if not cortex_df.empty:
+            # Display summary metrics
+            col1, col2, col3, col4 = st.columns(4)
+            
+            total_tokens = cortex_df['TOTAL_TOKENS'].sum()
+            total_credits = cortex_df['TOTAL_CREDITS'].sum()
+            total_calls = cortex_df['USAGE_COUNT'].sum()
+            unique_functions = len(cortex_df)
+            
+            with col1:
+                st.metric(
+                    "Total Tokens Consumed",
+                    f"{total_tokens:,.0f}",
+                    help="Total tokens consumed across all Cortex functions"
+                )
+            with col2:
+                st.metric(
+                    "Total Function Calls",
+                    f"{total_calls:,.0f}",
+                    help="Total number of Cortex function invocations"
+                )
+            with col3:
+                st.metric(
+                    "Credits Used",
+                    f"{total_credits:.3f}",
+                    help="Total Snowflake credits consumed by Cortex functions"
+                )
+            with col4:
+                st.metric(
+                    "Active Functions",
+                    f"{unique_functions}",
+                    help="Number of unique Cortex functions used"
+                )
+            
+            st.markdown("---")
+            
+            # Display detailed function usage table
+            st.subheader("📋 Detailed Function Usage")
+            
+            st.dataframe(
+                cortex_df,
+                column_config={
+                    'FUNCTION_NAME': 'Function',
+                    'TOTAL_TOKENS': st.column_config.NumberColumn('Total Tokens', format="%d"),
+                    'TOTAL_CREDITS': st.column_config.NumberColumn('Credits Used', format="%.4f"),
+                    'USAGE_COUNT': st.column_config.NumberColumn('Usage Count', format="%d"),
+                    'AVG_TOKENS_PER_CALL': st.column_config.NumberColumn('Avg Tokens/Call', format="%.1f"),
+                    'MAX_TOKENS_PER_CALL': st.column_config.NumberColumn('Max Tokens/Call', format="%d"),
+                    'FIRST_USAGE': st.column_config.DatetimeColumn('First Usage', format="DD/MM/YYYY HH:mm"),
+                    'LAST_USAGE': st.column_config.DatetimeColumn('Last Usage', format="DD/MM/YYYY HH:mm")
+                },
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            # Token consumption visualization
+            st.markdown("---")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("📊 Token Consumption by Function")
+                fig_tokens = px.bar(
+                    cortex_df,
+                    x='FUNCTION_NAME',
+                    y='TOTAL_TOKENS',
+                    title="Total Tokens Consumed by Function",
+                    labels={'TOTAL_TOKENS': 'Tokens', 'FUNCTION_NAME': 'Function'}
+                )
+                st.plotly_chart(fig_tokens, use_container_width=True)
+            
+            with col2:
+                st.subheader("💰 Credits by Function")
+                fig_credits = px.pie(
+                    cortex_df,
+                    values='TOTAL_CREDITS',
+                    names='FUNCTION_NAME',
+                    title="Credit Distribution by Function"
+                )
+                st.plotly_chart(fig_credits, use_container_width=True)
+        else:
+            st.info("No Cortex function usage data available for the last 30 days")
+            
+    except Exception as e:
+        st.error(f"Error fetching Cortex function usage: {str(e)}")
+        st.info("Note: CORTEX_FUNCTIONS_USAGE_HISTORY requires ACCOUNTADMIN privileges or proper grants")
     
     st.markdown("---")
     
@@ -1806,150 +1892,64 @@ elif st.session_state.nav == "costs":
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("📊 Daily AI Function Usage")
+        st.subheader("📊 Daily AI Services Credits")
         try:
-            daily_usage_query = """
+            daily_credits_query = """
             SELECT 
-                DATE(pd.parse_timestamp) as usage_date,
-                COUNT(*) as total_calls,
-                COUNT(CASE WHEN pd.parsed_content IS NOT NULL THEN 1 END) as parse_calls,
-                COUNT(CASE WHEN dc.document_class IS NOT NULL THEN 1 END) as classify_calls,
-                COUNT(CASE WHEN de.attribute_name IS NOT NULL THEN 1 END) as extract_calls
-            FROM document_db.s3_documents.parsed_documents pd
-            LEFT JOIN document_db.s3_documents.document_classifications dc ON pd.document_id = dc.document_id
-            LEFT JOIN document_db.s3_documents.document_extractions de ON pd.document_id = de.document_id
-            WHERE pd.parse_timestamp >= CURRENT_DATE - 30
-            GROUP BY DATE(pd.parse_timestamp)
-            ORDER BY usage_date DESC
-            LIMIT 30
+                USAGE_DATE,
+                SUM(CREDITS_USED) as total_credits,
+                SUM(CREDITS_USED_COMPUTE) as compute_credits,
+                SUM(CREDITS_USED_CLOUD_SERVICES) as cloud_services_credits
+            FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY
+            WHERE SERVICE_TYPE = 'AI_SERVICES'
+                AND USAGE_DATE >= CURRENT_DATE - 30
+            GROUP BY USAGE_DATE
+            ORDER BY USAGE_DATE ASC
             """
-            daily_df = session.sql(daily_usage_query).to_pandas()
+            daily_df = session.sql(daily_credits_query).to_pandas()
             
             if not daily_df.empty:
                 fig = px.line(
                     daily_df, 
                     x='USAGE_DATE', 
-                    y=['PARSE_CALLS', 'CLASSIFY_CALLS', 'EXTRACT_CALLS'],
-                    title="AI Function Calls Over Time",
-                    labels={'value': 'Number of Calls', 'USAGE_DATE': 'Date'}
+                    y='TOTAL_CREDITS',
+                    title="AI Services Credits Over Time",
+                    labels={'TOTAL_CREDITS': 'Credits Used', 'USAGE_DATE': 'Date'}
                 )
-                fig.update_layout(yaxis=dict(dtick=1))  # Force whole numbers
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.info("No usage data available for the last 30 days")
+                st.info("No daily credit usage data available")
         except Exception as e:
-            st.error(f"Error generating usage chart: {e}")
+            st.error(f"Error generating daily credits chart: {str(e)}")
     
     with col2:
-        st.subheader("💵 Estimated Cost Breakdown")
+        st.subheader("📈 Daily Token Consumption")
         try:
-            if ai_usage_df is not None and not ai_usage_df.empty and total_calls > 0:
-                cost_data = {
-                    'Function': ['AI_PARSE_DOCUMENT', 'AI_CLASSIFY', 'AI_EXTRACT', 'CORTEX_SEARCH'],
-                    'Calls': [parse_calls, classify_calls, extract_calls, search_calls],
-                    'Est_Cost': [estimated_parse_cost, estimated_classify_cost, estimated_extract_cost, estimated_search_cost]
-                }
-                cost_df = pd.DataFrame(cost_data)
-                cost_df = cost_df[cost_df['Calls'] > 0]  # Only show functions with usage
-                
-                fig = px.pie(
-                    cost_df,
-                    values='Est_Cost',
-                    names='Function',
-                    title="Cost Distribution by AI Function"
+            daily_tokens_query = """
+            SELECT 
+                DATE(START_TIME) as usage_date,
+                SUM(TOKENS_CONSUMED) as total_tokens,
+                COUNT(*) as function_calls
+            FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY
+            WHERE START_TIME >= CURRENT_DATE - 30
+            GROUP BY DATE(START_TIME)
+            ORDER BY usage_date ASC
+            """
+            daily_tokens_df = session.sql(daily_tokens_query).to_pandas()
+            
+            if not daily_tokens_df.empty:
+                fig = px.area(
+                    daily_tokens_df,
+                    x='USAGE_DATE',
+                    y='TOTAL_TOKENS',
+                    title="Token Consumption Over Time",
+                    labels={'TOTAL_TOKENS': 'Tokens', 'USAGE_DATE': 'Date'}
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.info("No cost data available")
+                st.info("No daily token usage data available")
         except Exception as e:
-            st.error(f"Error generating cost breakdown: {e}")
-    
-    st.markdown("---")
-    
-    # Detailed Cost Analysis
-    st.subheader("📋 Detailed Cost Analysis")
-    
-    # Cost per document type
-    try:
-        cost_by_type_query = """
-        SELECT 
-            COALESCE(dc.document_class, 'unclassified') as doc_type,
-            COUNT(*) as document_count,
-            COUNT(CASE WHEN pd.parsed_content IS NOT NULL THEN 1 END) as parsed_count,
-            COUNT(CASE WHEN de.attribute_name IS NOT NULL THEN 1 END) as extract_count,
-            COUNT(CASE WHEN ch.chunk_text IS NOT NULL THEN 1 END) as search_count,
-            AVG(pd.file_size) as avg_file_size
-        FROM document_db.s3_documents.parsed_documents pd
-        LEFT JOIN document_db.s3_documents.document_classifications dc ON pd.document_id = dc.document_id
-        LEFT JOIN document_db.s3_documents.document_extractions de ON pd.document_id = de.document_id
-        LEFT JOIN document_db.s3_documents.document_chunks ch ON pd.document_id = ch.document_id
-        WHERE pd.parse_timestamp >= CURRENT_DATE - 30
-        GROUP BY dc.document_class
-        ORDER BY document_count DESC
-        """
-        cost_type_df = session.sql(cost_by_type_query).to_pandas()
-        
-        if not cost_type_df.empty:
-            # Calculate estimated costs per document type
-            cost_type_df['ESTIMATED_PARSE_COST'] = cost_type_df['PARSED_COUNT'] * 0.002
-            cost_type_df['ESTIMATED_CLASSIFY_COST'] = cost_type_df['DOCUMENT_COUNT'] * 0.001
-            cost_type_df['ESTIMATED_EXTRACT_COST'] = cost_type_df['EXTRACT_COUNT'] * 0.0015
-            cost_type_df['ESTIMATED_SEARCH_COST'] = cost_type_df['SEARCH_COUNT'] * 0.0005
-            cost_type_df['ESTIMATED_TOTAL_COST'] = (cost_type_df['ESTIMATED_PARSE_COST'] + 
-                                                   cost_type_df['ESTIMATED_CLASSIFY_COST'] + 
-                                                   cost_type_df['ESTIMATED_EXTRACT_COST'] + 
-                                                   cost_type_df['ESTIMATED_SEARCH_COST'])
-            
-            st.dataframe(
-                cost_type_df[['DOC_TYPE', 'DOCUMENT_COUNT', 'PARSED_COUNT', 'EXTRACT_COUNT', 'SEARCH_COUNT', 'AVG_FILE_SIZE', 'ESTIMATED_TOTAL_COST']],
-                column_config={
-                    'DOC_TYPE': 'Document Type',
-                    'DOCUMENT_COUNT': 'Total Documents',
-                    'PARSED_COUNT': 'Parsed Documents',
-                    'EXTRACT_COUNT': 'Extracted Documents',
-                    'SEARCH_COUNT': 'Searchable Documents',
-                    'AVG_FILE_SIZE': st.column_config.NumberColumn('Avg File Size (bytes)', format="%.0f"),
-                    'ESTIMATED_TOTAL_COST': st.column_config.NumberColumn('Estimated Cost ($)', format="$%.3f")
-                },
-                use_container_width=True
-            )
-        else:
-            st.info("No document processing data available")
-    except Exception as e:
-        st.error(f"Error generating cost analysis: {e}")
-    
-    # Additional Cost Metrics
-    st.markdown("---")
-    st.subheader("📊 Cost Breakdown by Service")
-    
-    # Show individual service costs
-    if total_estimated_cost > 0:
-        service_col1, service_col2, service_col3, service_col4 = st.columns(4)
-        
-        with service_col1:
-            st.metric(
-                "AI Parse Cost", 
-                f"${estimated_parse_cost:.3f}",
-                help="Cost for AI_PARSE_DOCUMENT function calls"
-            )
-        with service_col2:
-            st.metric(
-                "AI Classify Cost", 
-                f"${estimated_classify_cost:.3f}",
-                help="Cost for AI_CLASSIFY function calls"
-            )
-        with service_col3:
-            st.metric(
-                "AI Extract Cost", 
-                f"${estimated_extract_cost:.3f}",
-                help="Cost for AI_EXTRACT function calls"
-            )
-        with service_col4:
-            st.metric(
-                "Search Cost", 
-                f"${estimated_search_cost:.3f}",
-                help="Cost for Cortex Search service usage"
-            )
+            st.error(f"Error generating token chart: {str(e)}")
 
 # Footer with Snowflake branding
 st.markdown("---")
