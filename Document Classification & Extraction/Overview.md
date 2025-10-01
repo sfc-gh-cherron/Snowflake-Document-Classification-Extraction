@@ -1,4 +1,4 @@
-# Snowflake Document AI Pipeline
+# Snowflake Document Classification and Extraction
 
 [![Snowflake](https://img.shields.io/badge/Snowflake-29B5E8?style=for-the-badge&logo=snowflake&logoColor=white)](https://www.snowflake.com/)
 [![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
@@ -8,7 +8,27 @@
 **Last Updated:** September 30, 2025  
 **Document Types:** 9 classifications | **Extraction Attributes:** 79 attributes
 
-An intelligent, automated document processing pipeline that transforms unstructured documents into structured, searchable data using Snowflake's Cortex AI capabilities.
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Key Highlights](#key-highlights)
+3. [Process Flow](#process-flow)
+4. [Architecture](#architecture)
+5. [Prerequisites](#prerequisites)
+6. [Quick Start](#quick-start)
+7. [Cost Overview](#cost-overview)
+8. [Appendix](#appendix)
+   - [Database Schema](#database-schema)
+   - [Document Classifications](#document-classifications)
+   - [Dashboard Features](#dashboard-features)
+
+---
+
+## Overview
+
+An intelligent, automated document processing pipeline that transforms unstructured documents into structured, searchable data using Snowflake's Cortex AI capabilities. The system processes documents stored in AWS S3, classifies them into 9 business document types, extracts up to 79 structured attributes, and enables semantic search across all content.
 
 ---
 
@@ -23,22 +43,21 @@ An intelligent, automated document processing pipeline that transforms unstructu
 
 ---
 
-## Architecture
+## Process Flow
 
-![Architecture Diagram](architecture_diagram.png)
-
-### Processing Flow
+The pipeline processes documents through seven automated stages:
 
 ```
-1. UPLOAD    → S3 Bucket (External Stage)
-2. PARSE     → AI_PARSE_DOCUMENT (Extract text from PDFs, images, Office docs)
-3. CLASSIFY  → AI_CLASSIFY (Categorize into 9 document types)
-4. EXTRACT   → AI_EXTRACT (Pull 4-10 structured attributes per type)
-5. CHUNK     → Split documents into searchable segments
-6. SEARCH    → CORTEX_SEARCH (Semantic search across all documents)
+1. UPLOAD       → Documents uploaded to S3 bucket
+2. PARSE        → AI_PARSE_DOCUMENT extracts text (OCR + layout analysis)
+3. CLASSIFY     → AI_CLASSIFY categorizes into 9 document types
+4. EXTRACT      → AI_EXTRACT pulls 4-10 structured attributes per type
+5. CHUNK        → Documents split into searchable segments
+6. SEARCH       → CORTEX_SEARCH enables semantic search
+7. VISUALIZE    → Streamlit dashboard for exploration and chat
 ```
 
-### Key Cortex AI Functions
+**Key Cortex AI Functions:**
 
 | Function | Purpose |
 |----------|---------|
@@ -47,22 +66,37 @@ An intelligent, automated document processing pipeline that transforms unstructu
 | [AI_EXTRACT](https://docs.snowflake.com/en/user-guide/snowflake-cortex/ai-functions#label-cortex-ai-extract) | Structured data extraction using natural language prompts |
 | [CORTEX_SEARCH](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview) | Semantic search and retrieval |
 
-**Limits:** 500 pages per document, 100 MB file size
+---
+
+## Architecture
+
+![Architecture Diagram](architecture_diagram.png)
+
+The architecture uses Snowflake's native capabilities for automated, event-driven document processing:
+
+- **Storage Layer**: AWS S3 (external stage) stores all documents
+- **Ingestion Layer**: Directory tables with auto-refresh detect new files
+- **Processing Layer**: Stream-triggered tasks execute AI functions sequentially
+- **Search Layer**: Cortex Search service indexes chunked content
+- **Application Layer**: Streamlit in Snowflake for user interaction
+
+---
+
+## Prerequisites
+
+Before setting up the pipeline, ensure you have:
+
+- **Snowflake Account**: With Cortex AI enabled (Enterprise Edition or higher recommended)
+- **AWS S3 Bucket**: Configured with appropriate IAM permissions for Snowflake access
+- **Compute Resources**: `COMPUTE_WH` warehouse (or equivalent) with sufficient credits
+- **Permissions**: `ACCOUNTADMIN` role access for initial setup
+- **Network Access**: Ability to configure S3 event notifications (SQS integration)
 
 ---
 
 ## Quick Start
 
-### Prerequisites
-
-- Snowflake account with Cortex AI enabled
-- AWS S3 bucket with appropriate IAM permissions
-- `COMPUTE_WH` warehouse (or equivalent)
-- `ACCOUNTADMIN` role access for initial setup
-
-### Setup Steps
-
-**1. Configure S3 Integration**
+### Step 1: Configure S3 Integration
 
 Update `01_s3_integration_setup.sql` with your AWS credentials:
 
@@ -71,46 +105,167 @@ STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::YOUR-ACCOUNT:role/YOUR-SNOWFLAKE-ROLE'
 URL = 's3://your-bucket-name/'
 ```
 
-**2. Deploy Pipeline**
+### Step 2: Deploy Pipeline
 
 Execute the setup scripts in Snowsight or your preferred SQL client:
 
 ```sql
 -- First, run 01_s3_integration_setup.sql
--- This creates the external stage and storage integration
+-- Creates external stage and storage integration
 
 -- Then, run 02_document_pipeline_setup.sql  
--- This creates tables, procedures, tasks, and the Cortex Search service
+-- Creates tables, procedures, tasks, and Cortex Search service
 ```
 
-**3. Configure S3 Event Notifications**
+### Step 3: Configure S3 Event Notifications
 
-- Copy the `DIRECTORY_NOTIFICATION_CHANNEL` ARN from step 2 output
-- In AWS S3 Console: Properties → Event notifications → Create event notification
-- Configure: All object create/remove events → SQS Queue → Paste ARN
-- Result: Real-time automatic pipeline triggering within seconds
+1. Copy the `DIRECTORY_NOTIFICATION_CHANNEL` ARN from Step 2 output
+2. In AWS S3 Console: **Properties** → **Event notifications** → **Create event notification**
+3. Configure:
+   - **Event types**: All object create and remove events
+   - **Destination**: SQS Queue
+   - **Queue ARN**: Paste the copied ARN
+4. Save configuration
 
-**4. Launch Dashboard**
+### Step 4: Create Streamlit Dashboard
 
-Create the Streamlit app in Snowsight:
+Build the dashboard in Snowsight:
 
 1. Navigate to **Streamlit** in the left sidebar
 2. Click **+ Streamlit App**
-3. Configure:
+3. Configure app settings:
    - **Database**: `DOCUMENT_DB`
    - **Schema**: `S3_DOCUMENTS`
    - **Warehouse**: `COMPUTE_WH`
    - **App name**: `document_ai_dashboard`
 4. Click **Create**
-5. Copy the contents of `streamlit_document_assistant.py` 
+5. Copy the contents of `streamlit_document_assistant.py`
 6. Paste into the Snowsight code editor
 7. Click **Run** to launch the application
 
+### Step 5: Test Pipeline End-to-End
+
+1. **Upload test documents** to your S3 bucket:
+   ```bash
+   aws s3 cp demo_docs/ s3://your-bucket-name/demo_docs/ --recursive
+   ```
+
+2. **Monitor processing** (should complete within 1-2 minutes):
+   ```sql
+   -- Check parsed documents
+   SELECT COUNT(*), status 
+   FROM document_db.s3_documents.parsed_documents 
+   GROUP BY status;
+   
+   -- Check classifications
+   SELECT COUNT(*), document_class 
+   FROM document_db.s3_documents.document_classifications 
+   GROUP BY document_class;
+   
+   -- Check extractions
+   SELECT COUNT(*) 
+   FROM document_db.s3_documents.document_extractions;
+   ```
+
+3. **View results** in flattened summary:
+   ```sql
+   SELECT * 
+   FROM document_db.s3_documents.document_processing_summary
+   LIMIT 100;
+   ```
+
+4. **Test semantic search**:
+   ```sql
+   SELECT * FROM TABLE(
+     document_db.s3_documents.document_search_service.SEARCH(
+       'What are the contract renewal dates?', 5
+     )
+   );
+   ```
+
+### Step 6: Clean Up (Optional)
+
+To reset the pipeline and remove all processed data:
+
+```bash
+# Execute cleanup script
+# WARNING: This will delete all tables and data
+snowsql -f 03_cleanup_utilities.sql
+```
+
+Or run cleanup steps manually in Snowsight:
+
+```sql
+-- Drop search service
+DROP CORTEX SEARCH SERVICE IF EXISTS document_db.s3_documents.cortex_search_service;
+
+-- Drop tasks
+DROP TASK IF EXISTS document_db.s3_documents.chunk_document_task;
+DROP TASK IF EXISTS document_db.s3_documents.extract_attributes_task;
+DROP TASK IF EXISTS document_db.s3_documents.classify_document_task;
+DROP TASK IF EXISTS document_db.s3_documents.parse_document_task;
+
+-- Drop tables
+DROP TABLE IF EXISTS document_db.s3_documents.document_chunks;
+DROP TABLE IF EXISTS document_db.s3_documents.document_extractions;
+DROP TABLE IF EXISTS document_db.s3_documents.document_classifications;
+DROP TABLE IF EXISTS document_db.s3_documents.parsed_documents;
+```
+
 ---
 
-## Database Schema
+## Cost Overview
 
-### Core Tables
+Snowflake Cortex AI functions are billed based on token consumption (Snowflake credits).
+
+### Pricing Summary
+
+| Function | Token Calculation | Approximate Cost |
+|----------|------------------|------------------|
+| **AI_PARSE_DOCUMENT** | 970 tokens/page or image | $0.04 per 100 pages* |
+| **AI_CLASSIFY** | ~2,000 tokens/document avg | $0.001 per document* |
+| **AI_EXTRACT** | ~3,000-5,000 tokens/document | $0.002-$0.003 per document* |
+| **CORTEX_SEARCH** | 100-500 tokens/query | $0.0001 per query* |
+
+*Based on $1 per credit pricing
+
+### Total Cost Estimate
+
+**Per 1,000 documents** (assuming 10-page average):
+- Parsing: ~$3.88
+- Classification: ~$1.10
+- Extraction (7 attributes avg): ~$2.25
+- Search (indexing + queries): ~$0.50
+
+**Total: ~$7.73 per 1,000 documents**
+
+### Optimization Tips
+
+1. **Batch processing** during off-peak hours
+2. **Skip parsing** for text-only documents
+3. **Optimize prompts** to reduce token usage
+4. **Cache classifications** for similar document types
+5. **Monitor usage** via Streamlit dashboard
+
+Track your usage:
+```sql
+SELECT 
+  DATE_TRUNC('day', parse_timestamp) as day,
+  COUNT(*) as documents_parsed,
+  SUM(LENGTH(content_text))/1000 as approx_tokens_k
+FROM document_db.s3_documents.parsed_documents
+WHERE parse_timestamp >= DATEADD(day, -30, CURRENT_TIMESTAMP())
+GROUP BY day
+ORDER BY day DESC;
+```
+
+---
+
+## Appendix
+
+### Database Schema
+
+**Core Tables:**
 
 | Table | Purpose |
 |-------|---------|
@@ -119,325 +274,55 @@ Create the Streamlit app in Snowsight:
 | `document_extractions` | Structured extracted data from AI_EXTRACT |
 | `extraction_prompts` | Question templates for each document type (79 prompts) |
 | `document_chunks` | Searchable text chunks for Cortex Search |
-| `cortex_search_service` | Semantic search index |
 
-### Flattened View
+**Flattened View:**
 
-**`document_processing_summary`** - Combines all data into flattened attribute-value pairs:
-- Automatically flattens JSON extractions into individual rows
-- Includes NULL values (valid for attributes without extracted values)
-- One row per document-attribute pair for easy querying
+`document_processing_summary` - Combines all data into attribute-value pairs with automatic JSON flattening
 
----
+**Stored Procedures:**
 
-## Document Classifications & Attributes
+1. `parse_new_documents()` - Parse documents using AI_PARSE_DOCUMENT
+2. `classify_parsed_documents()` - Classify into 9 document types
+3. `extract_attributes_for_classified_documents()` - Extract structured attributes
+4. `chunk_classified_documents()` - Create searchable chunks
 
-### 1. W2 Tax Form (10 attributes)
-**Classification:** `w2` | **Location:** `demo_docs/w2s/`
+**Automated Tasks:**
 
-| Attribute | Description |
-|-----------|-------------|
-| `employee_name` | Employee's full legal name |
-| `employer_name` | Employer company name |
-| `employer_ein` | Employer Identification Number |
-| `tax_year` | Tax year for the W-2 |
-| `wages_tips_compensation` | Box 1 - Wages, tips, other compensation |
-| `federal_income_tax_withheld` | Box 2 - Federal income tax withheld |
-| `social_security_wages` | Box 3 - Social security wages |
-| `social_security_tax_withheld` | Box 4 - Social security tax withheld |
-| `medicare_wages` | Box 5 - Medicare wages and tips |
-| `state` | State for income tax reporting |
-
-**Business Value:** Automated payroll processing, tax compliance, employee record management
+Stream-triggered pipeline: `parse_document_task` → `classify_document_task` → `extract_attributes_task` → `chunk_document_task`
 
 ---
 
-### 2. Vendor/Service Contract (10 attributes)
-**Classification:** `vendor_contract` | **Location:** `demo_docs/vendor_contracts/`
+### Document Classifications
 
-| Attribute | Description |
-|-----------|-------------|
-| `vendor_name` | Name of vendor/service provider |
-| `client_name` | Name of client/customer company |
-| `contract_effective_date` | Contract effective date |
-| `contract_expiration_date` | Contract expiration date |
-| `contract_term_months` | Length of contract in months/years |
-| `total_contract_value` | Total contract value (with currency) |
-| `payment_terms` | Payment schedule or terms |
-| `services_description` | Brief description of services provided |
-| `auto_renewal_clause` | Whether contract auto-renews (Yes/No) |
-| `termination_notice_period` | Notice period required for termination |
+The system supports 9 document types with targeted attribute extraction:
 
-**Business Value:** Contract lifecycle management, spend analytics, vendor compliance tracking, renewal alerts
+1. **W2 Tax Form** (10 attributes) - Employee name, employer, wages, taxes, state
+2. **Vendor Contract** (10 attributes) - Vendor name, contract dates, value, terms, renewal clause
+3. **Sales Report** (8 attributes) - Revenue, growth %, regions, pipeline, quota attainment
+4. **Marketing Report** (9 attributes) - Campaign name, budget, impressions, clicks, CTR, conversion, ROI
+5. **HR Policy** (7 attributes) - Policy title, effective date, version, department, approval
+6. **Corporate Policy** (8 attributes) - Policy name, category, effective date, spending limits
+7. **Financial Infographic** (10 attributes) - Quarter, revenue, margins, customer metrics, NRR
+8. **Case Study** (7 attributes) - Customer name, industry, use case, business impact, metrics
+9. **Strategy Document** (8 attributes) - Title, planning period, goals, initiatives, KPIs
+
+**Sample Locations:** All demo documents are organized in `demo_docs/` by type (w2s/, vendor_contracts/, sales/, marketing/, hr/, policies/, financial filings/)
 
 ---
 
-### 3. Sales Performance Report (8 attributes)
-**Classification:** `sales_report` | **Location:** `demo_docs/sales/`
-
-| Attribute | Description |
-|-----------|-------------|
-| `reporting_period` | Period covered (Q4 2024, FY2025, etc.) |
-| `total_revenue` | Total revenue for reporting period |
-| `revenue_growth_percent` | Revenue growth percentage (YoY or PoP) |
-| `top_performing_region` | Best performing sales region/territory |
-| `new_customers_count` | Number of new customers acquired |
-| `average_deal_size` | Average deal/contract value |
-| `sales_pipeline_value` | Total value in sales pipeline |
-| `quota_attainment_percent` | Percentage of sales quota achieved |
-
-**Business Value:** Sales performance tracking, forecasting, territory analysis, quota management
-
----
-
-### 4. Marketing Campaign Report (9 attributes)
-**Classification:** `marketing_report` | **Location:** `demo_docs/marketing/`
-
-| Attribute | Description |
-|-----------|-------------|
-| `campaign_name` | Name of marketing campaign |
-| `reporting_period` | Time period covered |
-| `campaign_budget` | Total budget allocated (with currency) |
-| `total_impressions` | Total ad impressions |
-| `total_clicks` | Total clicks received |
-| `click_through_rate` | CTR as a percentage |
-| `conversion_rate` | Conversion rate as a percentage |
-| `cost_per_acquisition` | CPA or cost per lead |
-| `roi_percent` | Return on investment as a percentage |
-
-**Business Value:** Marketing ROI analysis, campaign optimization, budget allocation, performance benchmarking
-
----
-
-### 5. HR Policy/Handbook (7 attributes)
-**Classification:** `hr_policy` | **Location:** `demo_docs/hr/`
-
-| Attribute | Description |
-|-----------|-------------|
-| `document_title` | Official title of HR policy/handbook |
-| `effective_date` | Policy effective date or last update |
-| `version_number` | Version or revision number |
-| `department` | Responsible department (HR, Legal, etc.) |
-| `policy_type` | Type (Handbook, Performance Review, etc.) |
-| `approval_authority` | Who approved the policy |
-| `last_review_date` | When policy was last reviewed |
-
-**Business Value:** Policy compliance, version control, audit trail, employee onboarding
-
----
-
-### 6. Corporate Policy (8 attributes)
-**Classification:** `corporate_policy` | **Location:** `demo_docs/policies/`
-
-| Attribute | Description |
-|-----------|-------------|
-| `policy_name` | Name of corporate policy |
-| `policy_category` | Category (Expense, Travel, Vendor Mgmt) |
-| `effective_date` | When policy takes effect |
-| `approval_date` | When policy was approved |
-| `policy_owner` | Department/role that owns policy |
-| `approval_levels_required` | Required approval levels/authorities |
-| `spending_limits` | Key spending limits or thresholds |
-| `review_frequency` | How often policy is reviewed |
-
-**Business Value:** Governance, compliance management, spending control, audit preparedness
-
----
-
-### 7. Financial Infographic/Earnings Report (10 attributes)
-**Classification:** `financial_infographic` | **Location:** `demo_docs/financial filings/`
-
-| Attribute | Description |
-|-----------|-------------|
-| `quarter` | Fiscal quarter (Q1, Q2, Q3, Q4) |
-| `fiscal_year` | Fiscal year |
-| `revenue` | Total revenue (with currency and units) |
-| `revenue_growth_percent` | YoY revenue growth percentage |
-| `operating_margin` | Operating margin as a percentage |
-| `net_income` | Net income/profit for the period |
-| `customers_count` | Total number of customers |
-| `customers_over_1m_count` | Enterprise customers (>$1M revenue) |
-| `net_revenue_retention_rate` | NRR as a percentage |
-| `gross_margin` | Gross margin as a percentage |
-
-**Business Value:** Financial analysis, investor relations, board reporting, competitive benchmarking
-
----
-
-### 8. Case Study/Customer Success Story (7 attributes)
-**Classification:** `case_study` | **Location:** `demo_docs/sales/`
-
-| Attribute | Description |
-|-----------|-------------|
-| `customer_name` | Name of featured customer/company |
-| `industry` | Customer's industry |
-| `use_case` | Primary use case or problem solved |
-| `business_impact` | Key business impact or result achieved |
-| `metrics_improved` | Specific metrics improved |
-| `implementation_duration` | How long implementation took |
-| `testimonial_quote` | Key testimonial or customer quote |
-
-**Business Value:** Sales enablement, marketing content, customer validation, competitive positioning
-
----
-
-### 9. Strategy Document (8 attributes)
-**Classification:** `strategy_document` | **Location:** `demo_docs/sales/`, `demo_docs/marketing/`
-
-| Attribute | Description |
-|-----------|-------------|
-| `document_title` | Title of strategy document |
-| `planning_period` | Time period covered (2025, FY2025, etc.) |
-| `department` | Department/business unit (Marketing, Sales) |
-| `strategic_goals` | Main strategic goals or objectives |
-| `key_initiatives` | Major initiatives or programs planned |
-| `budget_allocation` | Total budget or key allocations |
-| `success_metrics` | KPIs or success metrics |
-| `document_date` | When strategy document was created |
-
-**Business Value:** Strategic planning, resource allocation, OKR tracking, executive alignment
-
----
-
-### 10. Other/Fallback (2 attributes)
-**Classification:** `other` | **Location:** Any unrecognized document
-
-| Attribute | Description |
-|-----------|-------------|
-| `document_title` | Title of document |
-| `document_date` | Document date or most relevant date |
-
-**Business Value:** Ensures all documents are processed with minimal metadata
-
----
-
-## Core Components
-
-### Stored Procedures
-
-| Procedure | Purpose |
-|-----------|---------|
-| `parse_new_documents()` | Parse documents using AI_PARSE_DOCUMENT (LAYOUT mode with OCR fallback) |
-| `classify_parsed_documents()` | Classify documents into 9 types using AI_CLASSIFY |
-| `extract_attributes_for_classified_documents()` | Extract 4-10 attributes per document using AI_EXTRACT |
-| `chunk_classified_documents()` | Create searchable chunks for Cortex Search |
-
-### Automated Tasks
-
-**Stream-Triggered Pipeline:**
-1. `parse_document_task` - Triggered by new S3 files
-2. `classify_document_task` - Runs after parsing completes
-3. `extract_attributes_task` - Runs after classification completes
-4. `chunk_document_task` - Runs after extraction completes
-
-All tasks auto-scale with serverless compute and can be monitored via:
-```sql
-SHOW TASKS IN SCHEMA document_db.s3_documents;
-```
-
----
-
-## Cost Analysis
-
-### Pricing Details
-
-Snowflake Cortex AI functions are billed based on token consumption. All pricing is in Snowflake credits.
-
-#### AI_PARSE_DOCUMENT
-
-**Token Calculation:**
-- PDF/DOCX/PPTX: 970 tokens per page
-- Images (JPEG, PNG, TIFF): 970 tokens per image
-- HTML/TXT: 970 tokens per 3,000 characters
-
-**Pricing (as of September 2025):**
-- **Standard Edition**: 0.0004 credits per 1,000 tokens
-- **Enterprise Edition**: 0.0004 credits per 1,000 tokens
-
-**Example Cost:**
-- 100-page PDF = 97,000 tokens = 0.0388 credits (~$0.04 at $1/credit)
-- 1,000 pages = 0.388 credits (~$0.39)
-
-#### AI_CLASSIFY
-
-**Pricing:**
-- **Standard/Enterprise**: 0.00055 credits per 1,000 tokens
-
-**Typical Usage:**
-- Classification uses the full document text (up to token limits)
-- Average document (5 pages, ~1,500 words) ≈ 2,000 tokens
-- Cost per document: ~0.0011 credits (~$0.001)
-- 1,000 documents: ~1.1 credits (~$1.10)
-
-#### AI_EXTRACT
-
-**Pricing:**
-- **Standard/Enterprise**: 0.00055 credits per 1,000 tokens
-
-**Usage Pattern:**
-- Uses document content + extraction prompts
-- 9 document types with 4-10 attributes each
-- Average: 3,000-5,000 tokens per document extraction
-- Cost per document: ~0.0017-0.0028 credits (~$0.002-$0.003)
-- 1,000 documents: ~1.7-2.8 credits (~$1.70-$2.80)
-
-#### CORTEX_SEARCH
-
-**Pricing:**
-- **Storage**: Minimal cost for search index (based on storage pricing)
-- **Query**: 0.00055 credits per 1,000 tokens
-- **Typical search query**: 100-500 tokens
-- Cost per search: ~0.00006-0.00028 credits (~$0.00006-$0.00028)
-
-### Total Cost Estimate (Per 1,000 Documents)
-
-Assuming average document complexity:
-- **AI_PARSE_DOCUMENT**: ~$3.88 (10 pages avg)
-- **AI_CLASSIFY**: ~$1.10
-- **AI_EXTRACT**: ~$2.25 (avg 7 attributes)
-- **CORTEX_SEARCH**: ~$0.50 (including indexing and queries)
-
-**Total: ~$7.73 per 1,000 documents** (at $1 per credit)
-
-### Cost Optimization Strategies
-
-1. **Batch Processing**: Process documents in scheduled batches to optimize resource usage
-2. **Selective Parsing**: Skip AI_PARSE_DOCUMENT for documents already in text format
-3. **Prompt Optimization**: Keep extraction prompts concise to reduce token consumption
-4. **Chunking Strategy**: Optimize chunk size based on actual search requirements
-5. **Monitor Usage**: Use Streamlit dashboard to track usage patterns and identify optimization opportunities
-6. **Classification Caching**: Reuse classifications for similar document types
-7. **Incremental Processing**: Only process new/changed documents
-
-### Monitoring Costs
-
-View your AI function usage in the Streamlit dashboard or query directly:
-
-```sql
--- View parse operations
-SELECT COUNT(*) as total_parses, 
-       SUM(LENGTH(content_text)) / 1000 as approx_tokens_k
-FROM document_db.s3_documents.parsed_documents
-WHERE parse_timestamp >= DATEADD(day, -30, CURRENT_TIMESTAMP());
-
--- View extractions
-SELECT document_class, 
-       COUNT(*) as extraction_count,
-       COUNT(DISTINCT attribute_name) as unique_attributes
-FROM document_db.s3_documents.document_extractions
-WHERE extraction_timestamp >= DATEADD(day, -30, CURRENT_TIMESTAMP())
-GROUP BY document_class;
-```
-
----
-
-## Dashboard Features
-
-The Streamlit dashboard provides a comprehensive interface for managing and monitoring the document processing pipeline:
-
-- **Pipeline Overview**: Real-time processing metrics and status
-- **Document Explorer**: Browse individual documents and extracted data
-- **AI Assistant**: Chat with your documents using RAG (Retrieval Augmented Generation)
-- **Pipeline Control**: Manual processing triggers and task management
-- **Cost Monitoring**: Track AI usage and estimated costs across all Cortex functions
-- **Search Interface**: Semantic search across all processed documents
+### Dashboard Features
+
+The Streamlit dashboard provides:
+
+- **Pipeline Overview** - Real-time processing metrics, document counts, and task status
+- **Document Explorer** - Browse documents, view classifications, and extracted attributes
+- **AI Assistant** - RAG-enabled chat interface for natural language document queries
+- **Semantic Search** - Search across all processed documents using Cortex Search
+- **Pipeline Control** - Manual trigger buttons for each processing step
+- **Cost Monitoring** - Track AI function usage and estimated costs
+- **Analytics** - Processing trends, success rates, and attribute distribution charts
+
+**Access the dashboard:**
+1. Navigate to **Streamlit** in Snowsight
+2. Open `document_ai_dashboard`
+3. Select your warehouse and run
