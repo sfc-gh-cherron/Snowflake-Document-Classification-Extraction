@@ -680,9 +680,8 @@ st.sidebar.markdown("""
 # Navigation options with icons and descriptions
 nav_options = [
     {"label": "🏠 Dashboard", "key": "dashboard", "desc": "Overview & Metrics"},
-    {"label": "📁 Document Explorer", "key": "explorer", "desc": "Browse Documents"}, 
+    {"label": "📁 Document Review & Explore", "key": "explorer", "desc": "Review & Browse Documents"}, 
     {"label": "💬 Document Assistant", "key": "search", "desc": "AI Chat & Search"},
-    {"label": "✅ Quality Review", "key": "quality", "desc": "Review Low Confidence"},
     {"label": "⚙️ Pipeline Control", "key": "control", "desc": "Manage Processing"},
     {"label": "📈 Analytics", "key": "analytics", "desc": "Reports & Insights"},
     {"label": "💰 Cost Monitoring", "key": "costs", "desc": "Pipeline Expenses"}
@@ -784,15 +783,36 @@ if st.session_state.nav == "dashboard":
     st.subheader("Recently Processed Documents")
     render_recent_documents()
 
-# ========================= DOCUMENT EXPLORER =========================
+# ========================= DOCUMENT REVIEW & EXPLORE =========================
 elif st.session_state.nav == "explorer":
-    # Professional header for Document Explorer
+    # Professional header for Document Review & Explore
     st.markdown("""
     <div class="header-card">
-        <h1>Document Explorer</h1>
-        <p>Explore individual documents and their extracted data in detail using Snowflake AI</p>
+        <h1>Document Review & Explore</h1>
+        <p>Review extraction quality and explore individual documents and their extracted data in detail</p>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Confidence threshold slider at the top
+    st.subheader("⚙️ Quality Review Settings")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        confidence_threshold = st.slider(
+            "Confidence Score Threshold (highlight extractions below this value)",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.5,
+            step=0.05,
+            help="Extractions with confidence scores below this threshold will be highlighted for review"
+        )
+    with col2:
+        auto_refresh = st.checkbox(
+            "Auto-refresh on action",
+            value=True,
+            help="Automatically refresh after approving/denying values"
+        )
+    
+    st.markdown("---")
     
     # Get list of documents
     recent_docs = get_recent_documents(50)  # Get more for selection
@@ -816,8 +836,41 @@ elif st.session_state.nav == "explorer":
     if selected_doc_label:
         document_id = doc_options[selected_doc_label]
         
-        # Get document details
-        doc_info, extracted_fields, chunks = get_document_details(document_id)
+        # Get document details with confidence scores
+        @st.cache_data(ttl=60)
+        def get_document_details_with_confidence(doc_id):
+            """Get document details including confidence scores"""
+            doc_query = f"""
+            SELECT * FROM document_db.s3_documents.document_classifications
+            WHERE document_id = '{doc_id}'
+            """
+            
+            fields_query = f"""
+            SELECT 
+                attribute_name,
+                attribute_value,
+                confidence_score,
+                extraction_timestamp
+            FROM document_db.s3_documents.document_extractions
+            WHERE document_id = '{doc_id}'
+            ORDER BY attribute_name
+            """
+            
+            chunks_query = f"""
+            SELECT chunk_text, chunk_index
+            FROM document_db.s3_documents.document_chunks
+            WHERE document_id = '{doc_id}'
+            ORDER BY chunk_index
+            LIMIT 3
+            """
+            
+            doc_info = session.sql(doc_query).to_pandas()
+            extracted_fields = session.sql(fields_query).to_pandas()
+            chunks = session.sql(chunks_query).to_pandas()
+            
+            return doc_info, extracted_fields, chunks
+        
+        doc_info, extracted_fields, chunks = get_document_details_with_confidence(document_id)
         
         if not doc_info.empty:
             doc = doc_info.iloc[0]
@@ -878,16 +931,134 @@ elif st.session_state.nav == "explorer":
             
             st.markdown("---")
             
-            # Extracted Fields (full width, below preview)
+            # Extracted Fields with Quality Review
             st.subheader("Extracted Fields")
             if not extracted_fields.empty:
-                # Display extracted fields in a more compact grid layout
+                # Calculate quality metrics
+                low_conf_count = len(extracted_fields[extracted_fields['CONFIDENCE_SCORE'] < confidence_threshold])
+                if low_conf_count > 0:
+                    st.warning(f"⚠️ {low_conf_count} extraction(s) below {confidence_threshold:.0%} confidence threshold")
+                
+                # Display extracted fields in a more compact grid layout with confidence scores
                 field_cols = st.columns(2)  # Two columns for extracted fields
                 for idx, (_, field) in enumerate(extracted_fields.iterrows()):
                     with field_cols[idx % 2]:
-                        with st.expander(f"{field['ATTRIBUTE_NAME']}", expanded=True):
-                            st.write(field['ATTRIBUTE_VALUE'])
-                            st.caption(f"Extracted: {field['EXTRACTION_TIMESTAMP']}")
+                        # Determine confidence score styling
+                        conf_score = field['CONFIDENCE_SCORE']
+                        is_low_confidence = pd.notna(conf_score) and conf_score < confidence_threshold
+                        
+                        # Color coding for confidence
+                        if pd.isna(conf_score):
+                            conf_color = "#64748b"  # Gray for N/A
+                            conf_bg = "#f1f5f9"
+                            conf_text = "N/A"
+                        elif conf_score < 0.3:
+                            conf_color = "#dc2626"  # Red
+                            conf_bg = "#fef2f2"
+                            conf_text = f"{conf_score:.1%}"
+                        elif conf_score < 0.4:
+                            conf_color = "#ea580c"  # Orange
+                            conf_bg = "#fff7ed"
+                            conf_text = f"{conf_score:.1%}"
+                        elif conf_score < confidence_threshold:
+                            conf_color = "#ca8a04"  # Yellow
+                            conf_bg = "#fefce8"
+                            conf_text = f"{conf_score:.1%}"
+                        else:
+                            conf_color = "#16a34a"  # Green
+                            conf_bg = "#f0fdf4"
+                            conf_text = f"{conf_score:.1%}"
+                        
+                        # Create expandable tile with confidence badge
+                        tile_border = "2px solid #fca5a5" if is_low_confidence else "1px solid #e2e8f0"
+                        
+                        with st.expander(
+                            f"{field['ATTRIBUTE_NAME']}", 
+                            expanded=is_low_confidence
+                        ):
+                            # Confidence badge
+                            st.markdown(f"""
+                            <div style="
+                                display: inline-block;
+                                background: {conf_bg};
+                                border: 1px solid {conf_color};
+                                border-radius: 6px;
+                                padding: 0.3rem 0.6rem;
+                                font-weight: 600;
+                                color: {conf_color};
+                                font-size: 0.85rem;
+                                margin-bottom: 0.5rem;
+                            ">
+                                Confidence: {conf_text}
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # Value display and editing for low confidence items
+                            if is_low_confidence:
+                                unique_key = f"{document_id}_{field['ATTRIBUTE_NAME']}"
+                                
+                                # Editable value
+                                edited_value = st.text_input(
+                                    "Value",
+                                    value=field['ATTRIBUTE_VALUE'] if pd.notna(field['ATTRIBUTE_VALUE']) else "",
+                                    key=f"value_{unique_key}",
+                                    label_visibility="collapsed"
+                                )
+                                
+                                # Approve/Deny buttons
+                                col_approve, col_deny = st.columns(2)
+                                
+                                with col_approve:
+                                    if st.button(
+                                        "✅ Approve",
+                                        key=f"approve_{unique_key}",
+                                        use_container_width=True,
+                                        type="primary"
+                                    ):
+                                        try:
+                                            update_query = f"""
+                                            UPDATE document_db.s3_documents.document_extractions
+                                            SET attribute_value = '{edited_value.replace("'", "''")}',
+                                                confidence_score = 1.0
+                                            WHERE document_id = '{document_id}'
+                                                AND attribute_name = '{field['ATTRIBUTE_NAME']}'
+                                            """
+                                            session.sql(update_query).collect()
+                                            st.success(f"✅ Approved!")
+                                            
+                                            if auto_refresh:
+                                                get_document_details_with_confidence.clear()
+                                                time.sleep(0.3)
+                                                st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Error: {str(e)}")
+                                
+                                with col_deny:
+                                    if st.button(
+                                        "❌ Deny",
+                                        key=f"deny_{unique_key}",
+                                        use_container_width=True
+                                    ):
+                                        try:
+                                            update_query = f"""
+                                            UPDATE document_db.s3_documents.document_extractions
+                                            SET attribute_value = NULL,
+                                                confidence_score = 0.0
+                                            WHERE document_id = '{document_id}'
+                                                AND attribute_name = '{field['ATTRIBUTE_NAME']}'
+                                            """
+                                            session.sql(update_query).collect()
+                                            st.warning(f"❌ Denied")
+                                            
+                                            if auto_refresh:
+                                                get_document_details_with_confidence.clear()
+                                                time.sleep(0.3)
+                                                st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Error: {str(e)}")
+                            else:
+                                # Just display the value for high confidence items
+                                st.write(field['ATTRIBUTE_VALUE'])
             else:
                 st.info("No extracted fields found for this document")
             
@@ -1124,311 +1295,6 @@ elif st.session_state.nav == "search":
         
         # Add assistant response to chat history
         st.session_state.doc_messages.append({"role": "assistant", "content": response})
-
-# ========================= QUALITY REVIEW =========================
-elif st.session_state.nav == "quality":
-    # Professional header for Quality Review
-    st.markdown("""
-    <div class="header-card">
-        <h1>Quality Review</h1>
-        <p>Review and approve low-confidence AI extractions to improve data quality</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Initialize session state for tracking decisions
-    if 'quality_decisions' not in st.session_state:
-        st.session_state.quality_decisions = {}
-    
-    # Query for low-confidence extractions
-    @st.cache_data(ttl=60)
-    def get_low_confidence_extractions(threshold=0.5):
-        """Fetch extractions with confidence scores below the threshold"""
-        query = f"""
-        SELECT 
-            document_id,
-            file_name,
-            document_class,
-            attribute_name,
-            attribute_value,
-            confidence_score,
-            extraction_timestamp
-        FROM document_db.s3_documents.document_extractions
-        WHERE confidence_score < {threshold}
-            AND confidence_score IS NOT NULL
-        ORDER BY confidence_score ASC, file_name, attribute_name
-        """
-        try:
-            result = session.sql(query).to_pandas()
-            return result
-        except Exception as e:
-            st.error(f"Error fetching low-confidence extractions: {str(e)}")
-            return pd.DataFrame()
-    
-    # Settings
-    with st.expander("⚙️ Settings", expanded=False):
-        col1, col2 = st.columns(2)
-        with col1:
-            confidence_threshold = st.slider(
-                "Confidence Threshold",
-                min_value=0.0,
-                max_value=1.0,
-                value=0.5,
-                step=0.05,
-                help="Show extractions with confidence scores below this threshold"
-            )
-        with col2:
-            auto_refresh = st.checkbox(
-                "Auto-refresh on approval",
-                value=True,
-                help="Automatically refresh the list after approving/denying values"
-            )
-    
-    # Fetch low-confidence extractions
-    low_confidence_df = get_low_confidence_extractions(confidence_threshold)
-    
-    if low_confidence_df.empty:
-        st.success(f"🎉 Great! No extractions found with confidence below {confidence_threshold}")
-        st.info("All AI extractions meet the confidence threshold. Try adjusting the threshold in settings to see more results.")
-    else:
-        # Display summary metrics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric(
-                "Items to Review", 
-                len(low_confidence_df),
-                help="Total number of low-confidence extractions"
-            )
-        with col2:
-            st.metric(
-                "Unique Documents", 
-                low_confidence_df['DOCUMENT_ID'].nunique(),
-                help="Number of documents with low-confidence extractions"
-            )
-        with col3:
-            avg_confidence = low_confidence_df['CONFIDENCE_SCORE'].mean()
-            st.metric(
-                "Avg Confidence", 
-                f"{avg_confidence:.2%}",
-                help="Average confidence score for items below threshold"
-            )
-        with col4:
-            st.metric(
-                "Lowest Score", 
-                f"{low_confidence_df['CONFIDENCE_SCORE'].min():.2%}",
-                help="Lowest confidence score in the dataset"
-            )
-        
-        st.markdown("---")
-        
-        # Group by document for better organization
-        st.subheader("📋 Review Items")
-        
-        # Add filters
-        col1, col2 = st.columns(2)
-        with col1:
-            doc_classes = ["All"] + sorted(low_confidence_df['DOCUMENT_CLASS'].dropna().unique().tolist())
-            selected_class = st.selectbox(
-                "Filter by Document Class",
-                options=doc_classes,
-                help="Filter by document classification"
-            )
-        with col2:
-            documents = ["All"] + sorted(low_confidence_df['FILE_NAME'].dropna().unique().tolist())
-            selected_doc = st.selectbox(
-                "Filter by Document",
-                options=documents,
-                help="Filter by specific document"
-            )
-        
-        # Apply filters
-        filtered_df = low_confidence_df.copy()
-        if selected_class != "All":
-            filtered_df = filtered_df[filtered_df['DOCUMENT_CLASS'] == selected_class]
-        if selected_doc != "All":
-            filtered_df = filtered_df[filtered_df['FILE_NAME'] == selected_doc]
-        
-        if filtered_df.empty:
-            st.info("No items match the selected filters.")
-        else:
-            st.info(f"Showing {len(filtered_df)} of {len(low_confidence_df)} items")
-            
-            # Display each extraction for review
-            for idx, row in filtered_df.iterrows():
-                unique_key = f"{row['DOCUMENT_ID']}_{row['ATTRIBUTE_NAME']}"
-                
-                # Create a card for each extraction
-                with st.container():
-                    st.markdown(f"""
-                    <div style="
-                        background: linear-gradient(135deg, #f8fafc 0%, #e0f2fe 100%);
-                        border: 1px solid #71D3DC;
-                        border-radius: 12px;
-                        padding: 1.5rem;
-                        margin-bottom: 1rem;
-                    ">
-                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
-                            <div>
-                                <div style="font-weight: 600; color: #11567F; font-size: 1.1rem;">
-                                    📄 {row['FILE_NAME']}
-                                </div>
-                                <div style="color: #64748b; font-size: 0.9rem; margin-top: 0.3rem;">
-                                    <strong>Class:</strong> {row['DOCUMENT_CLASS']} | 
-                                    <strong>Extracted:</strong> {row['EXTRACTION_TIMESTAMP'].strftime('%Y-%m-%d %H:%M') if pd.notna(row['EXTRACTION_TIMESTAMP']) else 'N/A'}
-                                </div>
-                            </div>
-                            <div style="
-                                background: {'#fef2f2' if row['CONFIDENCE_SCORE'] < 0.3 else '#fff7ed' if row['CONFIDENCE_SCORE'] < 0.4 else '#fefce8'};
-                                border: 1px solid {'#fca5a5' if row['CONFIDENCE_SCORE'] < 0.3 else '#fdba74' if row['CONFIDENCE_SCORE'] < 0.4 else '#fcd34d'};
-                                border-radius: 8px;
-                                padding: 0.5rem 1rem;
-                                font-weight: 600;
-                                color: {'#dc2626' if row['CONFIDENCE_SCORE'] < 0.3 else '#ea580c' if row['CONFIDENCE_SCORE'] < 0.4 else '#ca8a04'};
-                            ">
-                                {row['CONFIDENCE_SCORE']:.1%}
-                            </div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Attribute and value in columns
-                    col1, col2, col3 = st.columns([2, 3, 2])
-                    
-                    with col1:
-                        st.markdown(f"**Attribute:**")
-                        st.code(row['ATTRIBUTE_NAME'], language=None)
-                    
-                    with col2:
-                        st.markdown(f"**Extracted Value:**")
-                        # Allow user to edit the value
-                        edited_value = st.text_input(
-                            "Value",
-                            value=row['ATTRIBUTE_VALUE'] if pd.notna(row['ATTRIBUTE_VALUE']) else "",
-                            key=f"value_{unique_key}",
-                            label_visibility="collapsed"
-                        )
-                    
-                    with col3:
-                        st.markdown(f"**Decision:**")
-                        decision_col1, decision_col2 = st.columns(2)
-                        
-                        with decision_col1:
-                            if st.button(
-                                "✅ Approve",
-                                key=f"approve_{unique_key}",
-                                use_container_width=True,
-                                type="primary"
-                            ):
-                                # Update the database with the approved value
-                                try:
-                                    update_query = f"""
-                                    UPDATE document_db.s3_documents.document_extractions
-                                    SET attribute_value = '{edited_value.replace("'", "''")}',
-                                        confidence_score = 1.0
-                                    WHERE document_id = '{row['DOCUMENT_ID']}'
-                                        AND attribute_name = '{row['ATTRIBUTE_NAME']}'
-                                    """
-                                    session.sql(update_query).collect()
-                                    st.success(f"✅ Approved: {row['ATTRIBUTE_NAME']}")
-                                    st.session_state.quality_decisions[unique_key] = "approved"
-                                    
-                                    if auto_refresh:
-                                        get_low_confidence_extractions.clear()
-                                        time.sleep(0.5)
-                                        st.rerun()
-                                except Exception as e:
-                                    st.error(f"Error updating extraction: {str(e)}")
-                        
-                        with decision_col2:
-                            if st.button(
-                                "❌ Deny",
-                                key=f"deny_{unique_key}",
-                                use_container_width=True
-                            ):
-                                # Mark as denied by setting confidence to 0 and clearing value
-                                try:
-                                    update_query = f"""
-                                    UPDATE document_db.s3_documents.document_extractions
-                                    SET attribute_value = NULL,
-                                        confidence_score = 0.0
-                                    WHERE document_id = '{row['DOCUMENT_ID']}'
-                                        AND attribute_name = '{row['ATTRIBUTE_NAME']}'
-                                    """
-                                    session.sql(update_query).collect()
-                                    st.warning(f"❌ Denied: {row['ATTRIBUTE_NAME']}")
-                                    st.session_state.quality_decisions[unique_key] = "denied"
-                                    
-                                    if auto_refresh:
-                                        get_low_confidence_extractions.clear()
-                                        time.sleep(0.5)
-                                        st.rerun()
-                                except Exception as e:
-                                    st.error(f"Error updating extraction: {str(e)}")
-                    
-                    st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Bulk actions
-        st.markdown("---")
-        st.subheader("🔧 Bulk Actions")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if st.button("✅ Approve All Filtered", type="secondary", use_container_width=True):
-                try:
-                    # Build WHERE clause based on filters
-                    where_clauses = [f"confidence_score < {confidence_threshold}"]
-                    if selected_class != "All":
-                        where_clauses.append(f"document_class = '{selected_class}'")
-                    if selected_doc != "All":
-                        where_clauses.append(f"file_name = '{selected_doc}'")
-                    
-                    where_clause = " AND ".join(where_clauses)
-                    
-                    bulk_approve_query = f"""
-                    UPDATE document_db.s3_documents.document_extractions
-                    SET confidence_score = 1.0
-                    WHERE {where_clause}
-                    """
-                    result = session.sql(bulk_approve_query).collect()
-                    st.success(f"✅ Approved {len(filtered_df)} extractions")
-                    
-                    get_low_confidence_extractions.clear()
-                    time.sleep(0.5)
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error in bulk approval: {str(e)}")
-        
-        with col2:
-            if st.button("❌ Deny All Filtered", type="secondary", use_container_width=True):
-                try:
-                    # Build WHERE clause based on filters
-                    where_clauses = [f"confidence_score < {confidence_threshold}"]
-                    if selected_class != "All":
-                        where_clauses.append(f"document_class = '{selected_class}'")
-                    if selected_doc != "All":
-                        where_clauses.append(f"file_name = '{selected_doc}'")
-                    
-                    where_clause = " AND ".join(where_clauses)
-                    
-                    bulk_deny_query = f"""
-                    UPDATE document_db.s3_documents.document_extractions
-                    SET attribute_value = NULL,
-                        confidence_score = 0.0
-                    WHERE {where_clause}
-                    """
-                    result = session.sql(bulk_deny_query).collect()
-                    st.warning(f"❌ Denied {len(filtered_df)} extractions")
-                    
-                    get_low_confidence_extractions.clear()
-                    time.sleep(0.5)
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error in bulk denial: {str(e)}")
-        
-        with col3:
-            if st.button("🔄 Refresh Data", use_container_width=True):
-                get_low_confidence_extractions.clear()
-                st.rerun()
 
 # ========================= PIPELINE CONTROL =========================
 elif st.session_state.nav == "control":
