@@ -824,7 +824,7 @@ elif st.session_state.nav == "explorer":
     # Document selector
     doc_options = {}
     for _, row in recent_docs.iterrows():
-        label = f"{row['FILE_NAME']} ({row['DOCUMENT_CLASS']}) - {row['CLASSIFICATION_TIMESTAMP']}"
+        label = f"{row['FILE_NAME']}"
         doc_options[label] = row['DOCUMENT_ID']
     
     selected_doc_label = st.selectbox(
@@ -841,8 +841,13 @@ elif st.session_state.nav == "explorer":
         def get_document_details_with_confidence(doc_id):
             """Get document details including confidence scores"""
             doc_query = f"""
-            SELECT * FROM document_db.s3_documents.document_classifications
-            WHERE document_id = '{doc_id}'
+            SELECT 
+                dc.*,
+                pd.content_text
+            FROM document_db.s3_documents.document_classifications dc
+            LEFT JOIN document_db.s3_documents.parsed_documents pd
+                ON dc.document_id = pd.document_id
+            WHERE dc.document_id = '{doc_id}'
             """
             
             fields_query = f"""
@@ -878,13 +883,24 @@ elif st.session_state.nav == "explorer":
             # Document Info
             st.subheader("📄 Document Information")
             
-            col1, col2, col3 = st.columns(3)
+            # Clean document class display
+            doc_class_display = doc['DOCUMENT_CLASS']
+            if pd.notna(doc_class_display):
+                try:
+                    # Try to parse as JSON and extract the label
+                    import json
+                    parsed = json.loads(doc_class_display)
+                    if isinstance(parsed, dict) and 'labels' in parsed:
+                        doc_class_display = parsed['labels'][0] if parsed['labels'] else doc_class_display
+                except:
+                    # If parsing fails, use as-is
+                    pass
+            
+            col1, col2 = st.columns(2)
             with col1:
-                st.metric("Document Class", doc['DOCUMENT_CLASS'])
+                st.metric("Document Class", doc_class_display)
             with col2:
                 st.metric("File Type", doc['DOCUMENT_TYPE'].upper())
-            with col3:
-                st.metric("Status", doc['STATUS'])
             
             # Document metadata (professional card layout)
             st.subheader("Document Metadata")
@@ -1059,6 +1075,58 @@ elif st.session_state.nav == "explorer":
                             else:
                                 # Just display the value for high confidence items
                                 st.write(field['ATTRIBUTE_VALUE'])
+                
+                # Bulk actions for low confidence items
+                low_conf_fields = extracted_fields[extracted_fields['CONFIDENCE_SCORE'] < confidence_threshold]
+                if not low_conf_fields.empty:
+                    st.markdown("---")
+                    st.subheader("🔧 Bulk Actions")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        if st.button("✅ Approve All Low-Confidence", type="secondary", use_container_width=True):
+                            try:
+                                update_query = f"""
+                                UPDATE document_db.s3_documents.document_extractions
+                                SET confidence_score = 1.0
+                                WHERE document_id = '{document_id}'
+                                    AND confidence_score < {confidence_threshold}
+                                """
+                                session.sql(update_query).collect()
+                                st.success(f"✅ Approved {len(low_conf_fields)} extractions")
+                                
+                                if auto_refresh:
+                                    get_document_details_with_confidence.clear()
+                                    time.sleep(0.3)
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"Error: {str(e)}")
+                    
+                    with col2:
+                        if st.button("❌ Deny All Low-Confidence", type="secondary", use_container_width=True):
+                            try:
+                                update_query = f"""
+                                UPDATE document_db.s3_documents.document_extractions
+                                SET attribute_value = NULL,
+                                    confidence_score = 0.0
+                                WHERE document_id = '{document_id}'
+                                    AND confidence_score < {confidence_threshold}
+                                """
+                                session.sql(update_query).collect()
+                                st.warning(f"❌ Denied {len(low_conf_fields)} extractions")
+                                
+                                if auto_refresh:
+                                    get_document_details_with_confidence.clear()
+                                    time.sleep(0.3)
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"Error: {str(e)}")
+                    
+                    with col3:
+                        if st.button("🔄 Refresh", use_container_width=True):
+                            get_document_details_with_confidence.clear()
+                            st.rerun()
             else:
                 st.info("No extracted fields found for this document")
             
