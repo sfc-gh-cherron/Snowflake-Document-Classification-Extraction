@@ -43,6 +43,7 @@ CREATE OR REPLACE TABLE document_db.s3_documents.document_extractions (
   document_class VARCHAR(100),
   attribute_name VARCHAR(200),
   attribute_value STRING,
+  confidence_score FLOAT,
   extraction_json VARIANT,
   extraction_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
 );
@@ -484,9 +485,11 @@ BEGIN
       END IF;
 
       -- Extract structured data using AI with class-specific prompts
+      -- Include output_details config to get confidence scores
       v_result := AI_EXTRACT(
         file => TO_FILE('@document_db.s3_documents.document_stage', :v_file_path),
-        responseFormat => :v_prompt_obj
+        responseFormat => :v_prompt_obj,
+        config => {'output_details': 'True'}
       );
 
       -- Store extracted attributes using MERGE for idempotent updates
@@ -498,16 +501,18 @@ BEGIN
                :v_document_class AS document_class,
                f.key::STRING AS attribute_name,
                f.value::STRING AS attribute_value,
+               TRY_CAST(:v_result:output_details:scores[f.key]::STRING AS FLOAT) AS confidence_score,
                :v_result AS extraction_json
-        FROM LATERAL FLATTEN(INPUT => :v_result) f  -- Flatten JSON response into rows
+        FROM LATERAL FLATTEN(INPUT => :v_result:response) f  -- Flatten the response object (not the full result)
       ) s
       ON t.document_id = s.document_id AND t.attribute_name = s.attribute_name
       WHEN MATCHED THEN UPDATE SET
         t.attribute_value = s.attribute_value,
+        t.confidence_score = s.confidence_score,
         t.extraction_json = s.extraction_json,
         t.extraction_timestamp = CURRENT_TIMESTAMP()
-      WHEN NOT MATCHED THEN INSERT (document_id, file_name, file_path, document_class, attribute_name, attribute_value, extraction_json)
-      VALUES (s.document_id, s.file_name, s.file_path, s.document_class, s.attribute_name, s.attribute_value, s.extraction_json);
+      WHEN NOT MATCHED THEN INSERT (document_id, file_name, file_path, document_class, attribute_name, attribute_value, confidence_score, extraction_json)
+      VALUES (s.document_id, s.file_name, s.file_path, s.document_class, s.attribute_name, s.attribute_value, s.confidence_score, s.extraction_json);
 
       processed_count := processed_count + 1;
     EXCEPTION
@@ -745,6 +750,7 @@ WITH flattened_extractions AS (
         document_class,
         attribute_name,
         attribute_value,
+        confidence_score,
         extraction_timestamp
     FROM document_db.s3_documents.document_extractions
     WHERE TRY_PARSE_JSON(attribute_value) IS NULL
@@ -759,6 +765,7 @@ WITH flattened_extractions AS (
         de.document_class,
         f.key::STRING AS attribute_name,
         f.value::STRING AS attribute_value,
+        de.confidence_score,
         de.extraction_timestamp
     FROM document_db.s3_documents.document_extractions de,
          LATERAL FLATTEN(INPUT => TRY_PARSE_JSON(de.attribute_value)) f
@@ -777,6 +784,7 @@ SELECT
     END as document_classification,
     fe.attribute_name,
     fe.attribute_value,
+    fe.confidence_score,
     dc.classification_timestamp,
     fe.extraction_timestamp
 FROM document_db.s3_documents.document_classifications dc
