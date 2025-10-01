@@ -1707,249 +1707,383 @@ elif st.session_state.nav == "analytics":
 elif st.session_state.nav == "costs":
     st.markdown("""
     <div class="header-card">
-        <h1>💰 Cost Monitoring</h1>
-        <p>Track and analyze Cortex AI services costs using Snowflake metering data</p>
+        <h1>Cost Monitoring Dashboard</h1>
+        <p>Track and analyze Cortex AI services and serverless task costs</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Refresh button
-    if st.button("🔄 Refresh Cost Data", type="primary"):
-        st.rerun()
+    # Date Range Filter
+    st.subheader("Date Range Filter")
+    col1, col2, col3 = st.columns([2, 2, 1])
+    
+    with col1:
+        start_date = st.date_input(
+            "Start Date",
+            value=datetime.now() - timedelta(days=30),
+            max_value=datetime.now().date(),
+            help="Select the start date for cost analysis"
+        )
+    
+    with col2:
+        end_date = st.date_input(
+            "End Date",
+            value=datetime.now().date(),
+            max_value=datetime.now().date(),
+            help="Select the end date for cost analysis"
+        )
+    
+    with col3:
+        st.write("")  # Spacing
+        st.write("")  # Spacing
+        if st.button("Refresh Cost Data", type="primary"):
+            st.rerun()
+    
+    # Validate date range
+    if start_date > end_date:
+        st.error("Error: Start date must be before or equal to end date")
+        st.stop()
     
     st.markdown("---")
     
-    # AI Services Cost Overview from METERING_DAILY_HISTORY
-    st.subheader("📊 AI Services Cost Overview (Last 30 Days)")
+    # Summary Metrics Section
+    st.subheader("Cost Summary")
     
     try:
-        # Get AI Services cost from Snowflake Account Usage
-        ai_services_cost_query = """
+        # Get total serverless compute and AI services costs for document pipeline only
+        total_cost_query = f"""
         SELECT 
-            SUM(CREDITS_USED) as total_credits,
-            SUM(CREDITS_USED_COMPUTE) as compute_credits,
-            SUM(CREDITS_USED_CLOUD_SERVICES) as cloud_services_credits,
-            COUNT(DISTINCT USAGE_DATE) as days_with_usage,
-            MIN(USAGE_DATE) as first_usage_date,
-            MAX(USAGE_DATE) as last_usage_date
-        FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY
-        WHERE SERVICE_TYPE = 'AI_SERVICES'
-            AND USAGE_DATE >= CURRENT_DATE - 30
+            SUM(CASE 
+                WHEN SERVICE_TYPE = 'SERVERLESS_TASK' 
+                    AND (UPPER(NAME) LIKE '%PARSE_DOCUMENTS_TASK%' 
+                        OR UPPER(NAME) LIKE '%CLASSIFY_DOCUMENTS_TASK%' 
+                        OR UPPER(NAME) LIKE '%EXTRACT_DOCUMENTS_TASK%'
+                        OR UPPER(NAME) LIKE '%CHUNK_DOCUMENTS_TASK%')
+                THEN CREDITS_USED ELSE 0 END) as serverless_credits,
+            SUM(CASE 
+                WHEN SERVICE_TYPE = 'AI_SERVICES' 
+                    AND (UPPER(NAME) LIKE '%PARSE_DOCUMENT%' 
+                        OR UPPER(NAME) LIKE '%CLASSIFY%' 
+                        OR UPPER(NAME) LIKE '%EXTRACT%')
+                THEN CREDITS_USED ELSE 0 END) as ai_services_credits
+        FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_HISTORY
+        WHERE DATE(START_TIME) >= '{start_date}'
+            AND DATE(START_TIME) <= '{end_date}'
+            AND SERVICE_TYPE IN ('SERVERLESS_TASK', 'AI_SERVICES')
+            AND NAME IS NOT NULL
         """
-        ai_cost_df = session.sql(ai_services_cost_query).to_pandas()
+        total_cost_df = session.sql(total_cost_query).to_pandas()
         
-        if not ai_cost_df.empty and ai_cost_df['TOTAL_CREDITS'].iloc[0] is not None:
-            total_credits = ai_cost_df['TOTAL_CREDITS'].iloc[0] or 0
-            compute_credits = ai_cost_df['COMPUTE_CREDITS'].iloc[0] or 0
-            cloud_services_credits = ai_cost_df['CLOUD_SERVICES_CREDITS'].iloc[0] or 0
-            days_with_usage = ai_cost_df['DAYS_WITH_USAGE'].iloc[0] or 0
+        if not total_cost_df.empty:
+            serverless_credits = total_cost_df['SERVERLESS_CREDITS'].iloc[0] or 0
+            ai_services_credits = total_cost_df['AI_SERVICES_CREDITS'].iloc[0] or 0
+            total_credits = serverless_credits + ai_services_credits
             
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3 = st.columns(3)
             
             with col1:
                 st.metric(
-                    "Total AI Credits", 
-                    f"{total_credits:.2f}",
-                    help="Total Snowflake credits consumed by AI services"
+                    "Total Serverless Compute Cost", 
+                    f"{serverless_credits:.2f} credits",
+                    help="Total credits for document pipeline serverless tasks only"
                 )
             with col2:
                 st.metric(
-                    "Compute Credits", 
-                    f"{compute_credits:.2f}",
-                    help="Credits used for AI compute operations"
+                    "Total AI Services Cost", 
+                    f"{ai_services_credits:.2f} credits",
+                    help="Total credits for document pipeline AI functions (parse_document, classify, extract) only"
                 )
             with col3:
                 st.metric(
-                    "Cloud Services Credits", 
-                    f"{cloud_services_credits:.2f}",
-                    help="Credits used for cloud services"
-                )
-            with col4:
-                st.metric(
-                    "Active Days", 
-                    f"{days_with_usage}",
-                    help="Number of days with AI service usage"
+                    "Combined Total Cost", 
+                    f"{total_credits:.2f} credits",
+                    help="Sum of document pipeline serverless tasks + AI functions costs"
                 )
         else:
-            st.info("No AI Services cost data available for the last 30 days")
+            st.info("No cost data available for the selected date range")
             
     except Exception as e:
-        st.error(f"Error fetching AI Services cost data: {str(e)}")
+        st.error(f"Error fetching cost summary: {str(e)}")
         st.info("Note: METERING_DAILY_HISTORY requires ACCOUNTADMIN privileges or proper grants")
     
     st.markdown("---")
     
-    # Cortex Functions Usage Details with Token Information
-    st.subheader("🔍 Cortex Functions Usage & Token Details")
+    # 1. Serverless Task Costs (Document Pipeline Tasks Only)
+    st.subheader("Serverless Task Costs (Document Pipeline)")
     
     try:
-        # Get detailed Cortex function usage with tokens
-        cortex_usage_query = """
+        serverless_query = f"""
         SELECT 
-            FUNCTION_NAME,
-            SUM(TOKENS_CONSUMED) as total_tokens,
-            SUM(CREDITS_USED) as total_credits,
-            COUNT(*) as usage_count,
-            AVG(TOKENS_CONSUMED) as avg_tokens_per_call,
-            MAX(TOKENS_CONSUMED) as max_tokens_per_call,
-            MIN(START_TIME) as first_usage,
-            MAX(END_TIME) as last_usage
-        FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY
-        WHERE START_TIME >= CURRENT_DATE - 30
-        GROUP BY FUNCTION_NAME
-        ORDER BY total_credits DESC
+            NAME as task_name,
+            DATE(START_TIME) as usage_date,
+            SUM(CREDITS_USED) as credits_used
+        FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_HISTORY
+        WHERE SERVICE_TYPE = 'SERVERLESS_TASK'
+            AND DATE(START_TIME) >= '{start_date}'
+            AND DATE(START_TIME) <= '{end_date}'
+            AND (UPPER(NAME) LIKE '%PARSE_DOCUMENTS_TASK%' 
+                OR UPPER(NAME) LIKE '%CLASSIFY_DOCUMENTS_TASK%'
+                OR UPPER(NAME) LIKE '%EXTRACT_DOCUMENTS_TASK%'
+                OR UPPER(NAME) LIKE '%CHUNK_DOCUMENTS_TASK%')
+        GROUP BY NAME, DATE(START_TIME)
+        ORDER BY usage_date DESC, credits_used DESC
         """
-        cortex_df = session.sql(cortex_usage_query).to_pandas()
+        serverless_df = session.sql(serverless_query).to_pandas()
         
-        if not cortex_df.empty:
-            # Display summary metrics
-            col1, col2, col3, col4 = st.columns(4)
+        if not serverless_df.empty:
+            # Summary metrics
+            total_task_credits = serverless_df['CREDITS_USED'].sum()
+            unique_tasks = serverless_df['TASK_NAME'].nunique()
             
-            total_tokens = cortex_df['TOTAL_TOKENS'].sum()
-            total_credits = cortex_df['TOTAL_CREDITS'].sum()
-            total_calls = cortex_df['USAGE_COUNT'].sum()
-            unique_functions = len(cortex_df)
-            
+            col1, col2 = st.columns(2)
             with col1:
-                st.metric(
-                    "Total Tokens Consumed",
-                    f"{total_tokens:,.0f}",
-                    help="Total tokens consumed across all Cortex functions"
-                )
+                st.metric("Total Serverless Task Credits", f"{total_task_credits:.2f}")
             with col2:
-                st.metric(
-                    "Total Function Calls",
-                    f"{total_calls:,.0f}",
-                    help="Total number of Cortex function invocations"
-                )
-            with col3:
-                st.metric(
-                    "Credits Used",
-                    f"{total_credits:.3f}",
-                    help="Total Snowflake credits consumed by Cortex functions"
-                )
-            with col4:
-                st.metric(
-                    "Active Functions",
-                    f"{unique_functions}",
-                    help="Number of unique Cortex functions used"
-                )
+                st.metric("Unique Tasks", f"{unique_tasks}")
             
-            st.markdown("---")
-            
-            # Display detailed function usage table
-            st.subheader("📋 Detailed Function Usage")
-            
+            # Detailed table
             st.dataframe(
-                cortex_df,
+                serverless_df,
                 column_config={
-                    'FUNCTION_NAME': 'Function',
-                    'TOTAL_TOKENS': st.column_config.NumberColumn('Total Tokens', format="%d"),
-                    'TOTAL_CREDITS': st.column_config.NumberColumn('Credits Used', format="%.4f"),
-                    'USAGE_COUNT': st.column_config.NumberColumn('Usage Count', format="%d"),
-                    'AVG_TOKENS_PER_CALL': st.column_config.NumberColumn('Avg Tokens/Call', format="%.1f"),
-                    'MAX_TOKENS_PER_CALL': st.column_config.NumberColumn('Max Tokens/Call', format="%d"),
-                    'FIRST_USAGE': st.column_config.DatetimeColumn('First Usage', format="DD/MM/YYYY HH:mm"),
-                    'LAST_USAGE': st.column_config.DatetimeColumn('Last Usage', format="DD/MM/YYYY HH:mm")
+                    'TASK_NAME': 'Task Name',
+                    'USAGE_DATE': st.column_config.DateColumn('Date'),
+                    'CREDITS_USED': st.column_config.NumberColumn('Credits Used', format="%.2f")
                 },
                 use_container_width=True,
                 hide_index=True
             )
-            
-            # Token consumption visualization
-            st.markdown("---")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("📊 Token Consumption by Function")
-                fig_tokens = px.bar(
-                    cortex_df,
-                    x='FUNCTION_NAME',
-                    y='TOTAL_TOKENS',
-                    title="Total Tokens Consumed by Function",
-                    labels={'TOTAL_TOKENS': 'Tokens', 'FUNCTION_NAME': 'Function'}
-                )
-                st.plotly_chart(fig_tokens, use_container_width=True)
-            
-            with col2:
-                st.subheader("💰 Credits by Function")
-                fig_credits = px.pie(
-                    cortex_df,
-                    values='TOTAL_CREDITS',
-                    names='FUNCTION_NAME',
-                    title="Credit Distribution by Function"
-                )
-                st.plotly_chart(fig_credits, use_container_width=True)
         else:
-            st.info("No Cortex function usage data available for the last 30 days")
-            
+            st.info("No serverless task cost data available for the selected date range")
     except Exception as e:
-        st.error(f"Error fetching Cortex function usage: {str(e)}")
-        st.info("Note: CORTEX_FUNCTIONS_USAGE_HISTORY requires ACCOUNTADMIN privileges or proper grants")
+        st.error(f"Error fetching serverless task costs: {str(e)}")
     
     st.markdown("---")
     
-    # Cost Breakdown Charts
-    col1, col2 = st.columns(2)
+    # 2. Cortex Function Usage from CORTEX_FUNCTIONS_USAGE_HISTORY  
+    st.subheader("Cortex Function Token Credits (AI_PARSE_DOCUMENT, AI_CLASSIFY, AI_EXTRACT)")
     
-    with col1:
-        st.subheader("📊 Daily AI Services Credits")
-        try:
-            daily_credits_query = """
-            SELECT 
-                USAGE_DATE,
-                SUM(CREDITS_USED) as total_credits,
-                SUM(CREDITS_USED_COMPUTE) as compute_credits,
-                SUM(CREDITS_USED_CLOUD_SERVICES) as cloud_services_credits
-            FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY
-            WHERE SERVICE_TYPE = 'AI_SERVICES'
-                AND USAGE_DATE >= CURRENT_DATE - 30
-            GROUP BY USAGE_DATE
-            ORDER BY USAGE_DATE ASC
-            """
-            daily_df = session.sql(daily_credits_query).to_pandas()
+    try:
+        cortex_functions_query = f"""
+        SELECT 
+            FUNCTION_NAME,
+            DATE(START_TIME) as usage_date,
+            SUM(TOKEN_CREDITS) as token_credits,
+            COUNT(*) as call_count
+        FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY
+        WHERE DATE(START_TIME) >= '{start_date}'
+            AND DATE(START_TIME) <= '{end_date}'
+            AND (UPPER(FUNCTION_NAME) LIKE '%PARSE_DOCUMENT%' 
+                OR UPPER(FUNCTION_NAME) LIKE '%CLASSIFY%' 
+                OR UPPER(FUNCTION_NAME) LIKE '%EXTRACT%')
+        GROUP BY FUNCTION_NAME, DATE(START_TIME)
+        ORDER BY usage_date DESC, token_credits DESC
+        """
+        cortex_functions_df = session.sql(cortex_functions_query).to_pandas()
+        
+        if not cortex_functions_df.empty:
+            # Overall Summary metrics
+            total_token_credits = cortex_functions_df['TOKEN_CREDITS'].sum()
+            total_calls = cortex_functions_df['CALL_COUNT'].sum()
             
-            if not daily_df.empty:
-                fig = px.line(
-                    daily_df, 
-                    x='USAGE_DATE', 
-                    y='TOTAL_CREDITS',
-                    title="AI Services Credits Over Time",
-                    labels={'TOTAL_CREDITS': 'Credits Used', 'USAGE_DATE': 'Date'}
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("No daily credit usage data available")
-        except Exception as e:
-            st.error(f"Error generating daily credits chart: {str(e)}")
+            # Function-specific subtotals
+            parse_credits = cortex_functions_df[cortex_functions_df['FUNCTION_NAME'].str.upper().str.contains('PARSE_DOCUMENT')]['TOKEN_CREDITS'].sum()
+            classify_credits = cortex_functions_df[cortex_functions_df['FUNCTION_NAME'].str.upper().str.contains('CLASSIFY')]['TOKEN_CREDITS'].sum()
+            extract_credits = cortex_functions_df[cortex_functions_df['FUNCTION_NAME'].str.upper().str.contains('EXTRACT')]['TOKEN_CREDITS'].sum()
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Total Function Calls", f"{total_calls:,.0f}")
+            with col2:
+                st.metric("Total Token Credits", f"{total_token_credits:.2f}")
+            
+            # Subtotals by function
+            st.markdown("**Subtotals by Function:**")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("AI_PARSE_DOCUMENT", f"{parse_credits:.2f}")
+            with col2:
+                st.metric("AI_CLASSIFY", f"{classify_credits:.2f}")
+            with col3:
+                st.metric("AI_EXTRACT", f"{extract_credits:.2f}")
+            
+            # Detailed table
+            st.dataframe(
+                cortex_functions_df,
+                column_config={
+                    'FUNCTION_NAME': 'Function',
+                    'USAGE_DATE': st.column_config.DateColumn('Date'),
+                    'TOKEN_CREDITS': st.column_config.NumberColumn('Token Credits', format="%.2f"),
+                    'CALL_COUNT': st.column_config.NumberColumn('Calls', format="%d")
+                },
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No Cortex function token usage data available for the selected date range")
+    except Exception as e:
+        st.error(f"Error fetching Cortex function usage data: {str(e)}")
     
-    with col2:
-        st.subheader("📈 Daily Token Consumption")
-        try:
-            daily_tokens_query = """
-            SELECT 
-                DATE(START_TIME) as usage_date,
-                SUM(TOKENS_CONSUMED) as total_tokens,
-                COUNT(*) as function_calls
-            FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY
-            WHERE START_TIME >= CURRENT_DATE - 30
-            GROUP BY DATE(START_TIME)
-            ORDER BY usage_date ASC
-            """
-            daily_tokens_df = session.sql(daily_tokens_query).to_pandas()
+    st.markdown("---")
+    
+    # 3. Cortex Search Costs (Document Pipeline)
+    st.subheader("Cortex Search Service Costs (Document Pipeline)")
+    
+    try:
+        search_costs_query = f"""
+        SELECT 
+            SERVICE_NAME,
+            USAGE_DATE,
+            SUM(TOKENS) as total_tokens,
+            SUM(CREDITS) as total_credits
+        FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_SEARCH_DAILY_USAGE_HISTORY
+        WHERE USAGE_DATE >= '{start_date}'
+            AND USAGE_DATE <= '{end_date}'
+            AND UPPER(SERVICE_NAME) LIKE '%DOCUMENT_SEARCH_SERVICE%'
+        GROUP BY SERVICE_NAME, USAGE_DATE
+        ORDER BY USAGE_DATE DESC, total_credits DESC
+        """
+        search_df = session.sql(search_costs_query).to_pandas()
+        
+        if not search_df.empty:
+            # Summary
+            total_tokens = search_df['TOTAL_TOKENS'].sum()
+            total_credits = search_df['TOTAL_CREDITS'].sum()
+            unique_services = search_df['SERVICE_NAME'].nunique()
             
-            if not daily_tokens_df.empty:
-                fig = px.area(
-                    daily_tokens_df,
-                    x='USAGE_DATE',
-                    y='TOTAL_TOKENS',
-                    title="Token Consumption Over Time",
-                    labels={'TOTAL_TOKENS': 'Tokens', 'USAGE_DATE': 'Date'}
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("No daily token usage data available")
-        except Exception as e:
-            st.error(f"Error generating token chart: {str(e)}")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Tokens", f"{total_tokens:,.0f}")
+            with col2:
+                st.metric("Total Credits", f"{total_credits:.2f}")
+            with col3:
+                st.metric("Unique Services", f"{unique_services}")
+            
+            # Detailed table
+            st.dataframe(
+                search_df,
+                column_config={
+                    'SERVICE_NAME': 'Service Name',
+                    'USAGE_DATE': st.column_config.DateColumn('Date'),
+                    'TOTAL_TOKENS': st.column_config.NumberColumn('Tokens', format="%d"),
+                    'TOTAL_CREDITS': st.column_config.NumberColumn('Credits', format="%.2f")
+                },
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No Cortex Search cost data available for the selected date range")
+    except Exception as e:
+        st.error(f"Error fetching Cortex Search costs: {str(e)}")
+    
+    st.markdown("---")
+    
+    # 5. Cost Trends Over Time
+    st.subheader("Cost Trends Over Time")
+    
+    # Serverless Task Costs Over Time (Document Pipeline)
+    try:
+        serverless_trend_query = f"""
+        SELECT 
+            DATE(START_TIME) as usage_date,
+            SUM(CREDITS_USED) as total_credits
+        FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_HISTORY
+        WHERE SERVICE_TYPE = 'SERVERLESS_TASK'
+            AND DATE(START_TIME) >= '{start_date}'
+            AND DATE(START_TIME) <= '{end_date}'
+            AND NAME IS NOT NULL
+            AND (UPPER(NAME) LIKE '%PARSE_DOCUMENTS_TASK%' 
+                OR UPPER(NAME) LIKE '%CLASSIFY_DOCUMENTS_TASK%' 
+                OR UPPER(NAME) LIKE '%EXTRACT_DOCUMENTS_TASK%'
+                OR UPPER(NAME) LIKE '%CHUNK_DOCUMENTS_TASK%')
+        GROUP BY DATE(START_TIME)
+        ORDER BY usage_date ASC
+        """
+        serverless_trend_df = session.sql(serverless_trend_query).to_pandas()
+        
+        if not serverless_trend_df.empty:
+            fig1 = px.line(
+                serverless_trend_df,
+                x='USAGE_DATE',
+                y='TOTAL_CREDITS',
+                title="Serverless Task Credits Over Time (Document Pipeline)",
+                labels={'TOTAL_CREDITS': 'Credits', 'USAGE_DATE': 'Date'}
+            )
+            st.plotly_chart(fig1, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error generating serverless trend chart: {str(e)}")
+    
+    # AI Services Costs Over Time (Document Pipeline)
+    try:
+        ai_trend_query = f"""
+        SELECT 
+            DATE(START_TIME) as usage_date,
+            SUM(CREDITS_USED) as total_credits
+        FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_HISTORY
+        WHERE SERVICE_TYPE = 'AI_SERVICES'
+            AND DATE(START_TIME) >= '{start_date}'
+            AND DATE(START_TIME) <= '{end_date}'
+            AND NAME IS NOT NULL
+            AND (UPPER(NAME) LIKE '%PARSE_DOCUMENT%' 
+                OR UPPER(NAME) LIKE '%CLASSIFY%' 
+                OR UPPER(NAME) LIKE '%EXTRACT%')
+        GROUP BY DATE(START_TIME)
+        ORDER BY usage_date ASC
+        """
+        ai_trend_df = session.sql(ai_trend_query).to_pandas()
+        
+        if not ai_trend_df.empty:
+            fig2 = px.area(
+                ai_trend_df,
+                x='USAGE_DATE',
+                y='TOTAL_CREDITS',
+                title="AI Services Credits Over Time (Document Pipeline)",
+                labels={'TOTAL_CREDITS': 'Credits', 'USAGE_DATE': 'Date'}
+            )
+            st.plotly_chart(fig2, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error generating AI services trend chart: {str(e)}")
+    
+    # Combined Services Cost Comparison (Document Pipeline)
+    try:
+        combined_trend_query = f"""
+        SELECT 
+            DATE(START_TIME) as usage_date,
+            SERVICE_TYPE,
+            SUM(CREDITS_USED) as total_credits
+        FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_HISTORY
+        WHERE DATE(START_TIME) >= '{start_date}'
+            AND DATE(START_TIME) <= '{end_date}'
+            AND SERVICE_TYPE IN ('SERVERLESS_TASK', 'AI_SERVICES')
+            AND NAME IS NOT NULL
+            AND (
+                (SERVICE_TYPE = 'SERVERLESS_TASK' AND (
+                    UPPER(NAME) LIKE '%PARSE_DOCUMENTS_TASK%' 
+                    OR UPPER(NAME) LIKE '%CLASSIFY_DOCUMENTS_TASK%' 
+                    OR UPPER(NAME) LIKE '%EXTRACT_DOCUMENTS_TASK%'
+                    OR UPPER(NAME) LIKE '%CHUNK_DOCUMENTS_TASK%'))
+                OR
+                (SERVICE_TYPE = 'AI_SERVICES' AND (
+                    UPPER(NAME) LIKE '%PARSE_DOCUMENT%' 
+                    OR UPPER(NAME) LIKE '%CLASSIFY%' 
+                    OR UPPER(NAME) LIKE '%EXTRACT%'))
+            )
+        GROUP BY DATE(START_TIME), SERVICE_TYPE
+        ORDER BY usage_date ASC
+        """
+        combined_trend_df = session.sql(combined_trend_query).to_pandas()
+        
+        if not combined_trend_df.empty:
+            fig3 = px.bar(
+                combined_trend_df,
+                x='USAGE_DATE',
+                y='TOTAL_CREDITS',
+                color='SERVICE_TYPE',
+                title="Cost Comparison: Serverless Tasks vs AI Services (Document Pipeline)",
+                labels={'TOTAL_CREDITS': 'Credits', 'USAGE_DATE': 'Date', 'SERVICE_TYPE': 'Service Type'},
+                barmode='group'
+            )
+            st.plotly_chart(fig3, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error generating combined trend chart: {str(e)}")
 
 # Footer with Snowflake branding
 st.markdown("---")

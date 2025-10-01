@@ -34,9 +34,10 @@ An intelligent, automated document processing pipeline that transforms unstructu
 ## Key Highlights
 
 - **Automated, Real-time, & Event-driven**: Auto-Refresh Directory Tables + Streams/Tasks process documents within seconds of S3 upload
+- **Human in the Loop**: Use confidence scores to flag extracted values and take action
 - **Scalable**: Serverless Tasks auto-scale compute resources based on document volume
 - **Cortex AI-Powered**: Leverages `AI_PARSE_DOCUMENT`, `AI_CLASSIFY`, `AI_EXTRACT`, and `CORTEX_SEARCH`
-- **Interactive Dashboard**: Streamlit app for visualization, monitoring, and RAG-enabled document chat
+- **Interactive Dashboard**: Streamlit app for visualization, monitoring, RAG-enabled document chat, and Cost overview
 - **Multi-Format Support**: PDF, DOCX, PPTX, JPEG, JPG, PNG, TIFF, TIF, HTML, TXT
 - **Cost-Effective**: Documents live in S3—no need to load into Snowflake storage
 
