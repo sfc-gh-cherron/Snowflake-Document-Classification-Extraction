@@ -185,32 +185,9 @@ Build the dashboard in Snowsight:
 
 ### Step 6: Clean Up (Optional)
 
-To reset the pipeline and remove all processed data:
+To reset the pipeline and remove all processed data, execute the cleanup script `03_cleanup_utilities.sql` in Snowsight.
 
-```bash
-# Execute cleanup script
-# WARNING: This will delete all tables and data
-snowsql -f 03_cleanup_utilities.sql
-```
-
-Or run cleanup steps manually in Snowsight:
-
-```sql
--- Drop search service
-DROP CORTEX SEARCH SERVICE IF EXISTS document_db.s3_documents.cortex_search_service;
-
--- Drop tasks
-DROP TASK IF EXISTS document_db.s3_documents.chunk_document_task;
-DROP TASK IF EXISTS document_db.s3_documents.extract_attributes_task;
-DROP TASK IF EXISTS document_db.s3_documents.classify_document_task;
-DROP TASK IF EXISTS document_db.s3_documents.parse_document_task;
-
--- Drop tables
-DROP TABLE IF EXISTS document_db.s3_documents.document_chunks;
-DROP TABLE IF EXISTS document_db.s3_documents.document_extractions;
-DROP TABLE IF EXISTS document_db.s3_documents.document_classifications;
-DROP TABLE IF EXISTS document_db.s3_documents.parsed_documents;
-```
+**WARNING:** This will delete all tables and data.
 
 ---
 
@@ -228,28 +205,6 @@ Snowflake Cortex AI functions are billed based on token consumption (Snowflake c
 | **CORTEX_SEARCH** | 100-500 tokens/query | $0.0001 per query* |
 
 *Based on $1 per credit pricing
-
-### Total Cost Estimate
-
-**Per 1,000 documents** (assuming 10-page average):
-- Parsing: ~$3.88
-- Classification: ~$1.10
-- Extraction (7 attributes avg): ~$2.25
-- Search (indexing + queries): ~$0.50
-
-**Total: ~$7.73 per 1,000 documents**
-
-Track your usage:
-```sql
-SELECT 
-  DATE_TRUNC('day', parse_timestamp) as day,
-  COUNT(*) as documents_parsed,
-  SUM(LENGTH(content_text))/1000 as approx_tokens_k
-FROM document_db.s3_documents.parsed_documents
-WHERE parse_timestamp >= DATEADD(day, -30, CURRENT_TIMESTAMP())
-GROUP BY day
-ORDER BY day DESC;
-```
 
 ---
 
