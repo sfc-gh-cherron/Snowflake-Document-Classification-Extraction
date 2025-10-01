@@ -17,7 +17,7 @@ CREATE OR REPLACE SCHEMA document_db.s3_documents
 CREATE OR REPLACE STORAGE INTEGRATION s3_document_integration
   TYPE = EXTERNAL_STAGE
   STORAGE_PROVIDER = 'S3'
-  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::484577546576:role/cherron_snowflake_role'  -- Replace with your IAM role ARN
+  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::YOUR-AWS-ACCOUNT-ID:role/YOUR-SNOWFLAKE-ROLE'  -- Replace with your IAM role ARN
   ENABLED = TRUE
   STORAGE_ALLOWED_LOCATIONS = ('*');  -- Replace with your S3 bucket name
 
@@ -26,7 +26,7 @@ DESCRIBE INTEGRATION s3_document_integration;
 -- Create external stage with auto-refresh enabled
 CREATE OR REPLACE STAGE document_db.s3_documents.document_stage
   STORAGE_INTEGRATION = s3_document_integration
-  URL = 's3://cherron-demo/'  -- Replace with your S3 bucket name
+  URL = 's3://your-bucket-name/'  -- Replace with your S3 bucket name
   DIRECTORY = (
     ENABLE = TRUE
     AUTO_REFRESH = TRUE
@@ -53,7 +53,7 @@ STEP-BY-STEP: Configure S3 Event Notifications for Auto-Refresh
    It will look like: arn:aws:sqs:us-east-1:123456789012:sf-snowflake-AIDACKCEVSQ6C2EXAMPLE...
 
 2. IN AWS S3 CONSOLE:
-   a) Navigate to your S3 bucket: s3://cherron-demo/
+   a) Navigate to your S3 bucket: s3://your-bucket-name/
    b) Go to Properties tab → Event notifications → Create event notification
    
 3. CONFIGURE THE NOTIFICATION:
