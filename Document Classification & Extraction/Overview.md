@@ -5,7 +5,7 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![AWS S3](https://img.shields.io/badge/AWS%20S3-569A31?style=for-the-badge&logo=amazon-s3&logoColor=white)](https://aws.amazon.com/s3/)
 
-**Last Updated:** September 30, 2025
+**Last Updated:** October 1, 2025
 
 ---
 
@@ -59,12 +59,12 @@ The pipeline processes documents through seven automated stages:
 
 **Key Cortex AI Functions:**
 
-| Function | Purpose |
-|----------|---------|
-| [AI_PARSE_DOCUMENT](https://docs.snowflake.com/en/user-guide/snowflake-cortex/ai-functions#label-cortex-ai-parse-document) | OCR and text extraction from various formats |
-| [AI_CLASSIFY](https://docs.snowflake.com/en/user-guide/snowflake-cortex/ai-functions#label-cortex-ai-classify) | Multi-class document classification |
-| [AI_EXTRACT](https://docs.snowflake.com/en/user-guide/snowflake-cortex/ai-functions#label-cortex-ai-extract) | Structured data extraction using natural language prompts |
-| [CORTEX_SEARCH](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview) | Semantic search and retrieval |
+| Function | Purpose | Cost Documentation |
+|----------|---------|-------------------|
+| [AI_PARSE_DOCUMENT](https://docs.snowflake.com/en/user-guide/snowflake-cortex/parse-document) | OCR and text extraction from various formats | [Pricing](https://docs.snowflake.com/en/user-guide/snowflake-cortex/parse-document#cost-considerations) |
+| [AI_CLASSIFY](https://docs.snowflake.com/en/sql-reference/functions/ai_classify) | Multi-class  classification | [Pricing](https://docs.snowflake.com/en/sql-reference/functions/ai_classify#cost-considerations) |
+| [AI_EXTRACT](https://docs.snowflake.com/en/sql-reference/functions/ai_extract) | Structured data extraction using natural language prompts | [Pricing](https://docs.snowflake.com/en/sql-reference/functions/ai_extract#cost-considerations) |
+| [CORTEX_SEARCH](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview) | Semantic search and retrieval | [Pricing](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-costs) |
 
 ---
 
@@ -188,23 +188,6 @@ Build the dashboard in Snowsight:
 To reset the pipeline and remove all processed data, execute the cleanup script `03_cleanup_utilities.sql` in Snowsight.
 
 **WARNING:** This will delete all tables and data.
-
----
-
-## Cost Overview
-
-Snowflake Cortex AI functions are billed based on token consumption (Snowflake credits).
-
-### Pricing Summary
-
-| Function | Token Calculation | Approximate Cost |
-|----------|------------------|------------------|
-| **AI_PARSE_DOCUMENT** | 970 tokens/page or image | $0.04 per 100 pages* |
-| **AI_CLASSIFY** | ~2,000 tokens/document avg | $0.001 per document* |
-| **AI_EXTRACT** | ~3,000-5,000 tokens/document | $0.002-$0.003 per document* |
-| **CORTEX_SEARCH** | 100-500 tokens/query | $0.0001 per query* |
-
-*Based on $1 per credit pricing
 
 ---
 
