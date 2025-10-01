@@ -5,8 +5,7 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![AWS S3](https://img.shields.io/badge/AWS%20S3-569A31?style=for-the-badge&logo=amazon-s3&logoColor=white)](https://aws.amazon.com/s3/)
 
-**Last Updated:** September 30, 2025  
-**Document Types:** 9 classifications | **Extraction Attributes:** 79 attributes
+**Last Updated:** September 30, 2025
 
 ---
 
@@ -28,7 +27,7 @@
 
 ## Overview
 
-An intelligent, automated document processing pipeline that transforms unstructured documents into structured, searchable data using Snowflake's Cortex AI capabilities. The system processes documents stored in AWS S3, classifies them into 9 business document types, extracts up to 79 structured attributes, and enables semantic search across all content.
+An intelligent, automated document processing pipeline that transforms unstructured documents into structured, searchable data using Snowflake's Cortex AI capabilities. The system processes documents stored in AWS S3, classifies them into business document types, extracts structured attributes, and enables semantic search across all content.
 
 ---
 
@@ -238,14 +237,6 @@ Snowflake Cortex AI functions are billed based on token consumption (Snowflake c
 - Search (indexing + queries): ~$0.50
 
 **Total: ~$7.73 per 1,000 documents**
-
-### Optimization Tips
-
-1. **Batch processing** during off-peak hours
-2. **Skip parsing** for text-only documents
-3. **Optimize prompts** to reduce token usage
-4. **Cache classifications** for similar document types
-5. **Monitor usage** via Streamlit dashboard
 
 Track your usage:
 ```sql
